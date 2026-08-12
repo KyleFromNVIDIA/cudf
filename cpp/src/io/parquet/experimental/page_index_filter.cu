@@ -584,7 +584,7 @@ struct page_stats_to_row_mask_converter : public page_stats_caster {
 
       auto const page_mask_nullmask =
         page_mask->null_count()
-          ? cudf::detail::make_host_vector_async(
+          ? cudf::detail::make_host_vector(
               cudf::device_span<bitmask_type const>{
                 page_mask->view().null_mask(),
                 static_cast<std::size_t>(num_bitmask_words(page_mask->size()))},
