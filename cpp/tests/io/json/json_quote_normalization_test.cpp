@@ -38,7 +38,7 @@ void run_test(std::string const& host_input,
   CUDF_CUDA_TRY(cudaMemcpyAsync(preprocessed_host_output.data(),
                                 device_data.data(),
                                 preprocessed_host_output.size(),
-                                cudaMemcpyDeviceToHost,
+                                cudaMemcpyDefault,
                                 stream_view.value()))
   stream_view.synchronize();
   CUDF_TEST_EXPECT_VECTOR_EQUAL(
