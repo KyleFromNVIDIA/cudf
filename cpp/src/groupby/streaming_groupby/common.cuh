@@ -239,9 +239,7 @@ auto build_cross_comparators(
     h_eqs.push_back(adapter.comparator);
   }
 
-  auto result = cudf::detail::make_device_uvector_async(h_eqs, stream, temp_mr);
-  stream.sync();  // h_eqs is going of scope
-  return result;
+  return cudf::detail::make_device_uvector(h_eqs, stream, temp_mr);
 }
 
 /// The impl struct for streaming_groupby. Defined in impl.cu.

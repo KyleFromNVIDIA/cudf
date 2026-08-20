@@ -1162,7 +1162,7 @@ struct dictionary_caster {
                                                                   physical_type);
     CUDF_CUDA_TRY(cudaGetLastError());
 
-    stream.synchronize();
+    stream.sync();
     // Build the BOOL8 columns from the results buffers
     return build_columns(results_buffers, stream, mr);
   }
