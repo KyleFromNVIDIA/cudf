@@ -284,15 +284,13 @@ def test_read_parquet_from_device_buffers(
 
     # to_device() is documented as fully async on a non-default stream, and
     # the caller is responsible for keeping the source bytes alive until
-    # synchronize_stream() below runs. But that contract is easy to get
-    # wrong. See https://github.com/rapidsai/rmm/issues/2521
-    source_bytes = get_bytes_from_source(source)
+    # synchronize_stream() below runs.
+    # See https://github.com/rapidsai/rmm/issues/2521
     rmm_buf = DeviceBuffer.to_device(
-        source_bytes, plc.utils._get_stream(stream)
+        get_bytes_from_source(source), plc.utils._get_stream(stream)
     )
-    buf = FooSpan(rmm_buf) if use_foo_span else rmm_buf
-
     synchronize_stream(stream)
+    buf = FooSpan(rmm_buf) if use_foo_span else rmm_buf
 
     options = plc.io.parquet.ParquetReaderOptions.builder(
         plc.io.SourceInfo([buf] * num_buffers)
