@@ -714,7 +714,7 @@ std::shared_ptr<preprocessed_table> preprocessed_table::create(
                        new_null_precedence,
                        has_ranked_children,
                        stream);
-  stream.synchronize();  // new_column_order and new_null_precedence go out of scope
+  cudf::detail::sync_stream(stream);  // new_column_order and new_null_precedence go out of scope
   return result;
 }
 
@@ -793,7 +793,7 @@ preprocessed_table::create(table_view const& lhs,
                                  new_null_precedence_lhs,
                                  has_ranked_children_rhs,
                                  stream)};
-  stream.synchronize();  // new_column_order_* and new_null_precedence_* go out of scope
+  cudf::detail::sync_stream(stream);  // new_column_order_* and new_null_prec_* go out of scope
   return result;
 }
 
