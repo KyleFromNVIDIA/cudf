@@ -71,7 +71,7 @@ std::unique_ptr<column> encode(column_view const& input,
     indices_type, input.size(), cudf::mask_state::UNALLOCATED, stream, mr);
   if (input.is_empty()) {
     return make_dictionary_column(
-      make_empty_column(input.type()), std::move(indices_column), rmm::device_buffer{}, 0);
+      make_empty_column(input.type()), std::move(indices_column), cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0);
   }
 
   using encode_probe_t = cuco::linear_probing<

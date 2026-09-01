@@ -572,9 +572,9 @@ std::unique_ptr<table> make_timezone_transition_table(std::optional<std::string_
 
   std::vector<std::unique_ptr<column>> tz_table_columns;
   tz_table_columns.emplace_back(
-    std::make_unique<cudf::column>(std::move(d_ttimes), rmm::device_buffer{}, 0));
+    std::make_unique<cudf::column>(std::move(d_ttimes), cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0));
   tz_table_columns.emplace_back(
-    std::make_unique<cudf::column>(std::move(d_offsets), rmm::device_buffer{}, 0));
+    std::make_unique<cudf::column>(std::move(d_offsets), cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0));
 
   // Need to finish copies before transition_times and offsets go out of scope
   cudf::detail::sync_stream(stream);

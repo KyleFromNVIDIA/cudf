@@ -427,7 +427,7 @@ struct copy_block_partitions_dispatcher {
                                stream);
 
     return std::make_unique<column>(
-      input.type(), input.size(), std::move(output), rmm::device_buffer{}, 0);
+      input.type(), input.size(), std::move(output), cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0);
   }
 
   template <typename DataType, CUDF_ENABLE_IF(not is_copy_block_supported<DataType>())>

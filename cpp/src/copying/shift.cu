@@ -38,7 +38,7 @@ inline bool __device__ out_of_bounds(size_type size, size_type idx)
   return idx < 0 || idx >= size;
 }
 
-std::pair<rmm::device_buffer, size_type> create_null_mask(column_device_view const& input,
+std::pair<cuda::device_buffer<uint8_t>, size_type> create_null_mask(column_device_view const& input,
                                                           size_type offset,
                                                           scalar const& fill_value,
                                                           cuda::stream_ref stream,

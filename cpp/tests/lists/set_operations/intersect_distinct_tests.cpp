@@ -519,11 +519,11 @@ TEST_F(SetIntersectTest, InputListsOfNestedStructsHaveNull)
     };
 
     auto const lhs = cudf::make_lists_column(
-      3, int32s_col{0, 8, 16, 24}.release(), get_structs_lhs().release(), 0, {});
+      3, int32s_col{0, 8, 16, 24}.release(), get_structs_lhs().release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
     auto const rhs = cudf::make_lists_column(
-      3, int32s_col{0, 8, 16, 24}.release(), get_structs_rhs().release(), 0, {});
+      3, int32s_col{0, 8, 16, 24}.release(), get_structs_rhs().release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
     auto const expected = cudf::make_lists_column(
-      3, int32s_col{0, 2, 3, 5}.release(), get_structs_expected().release(), 0, {});
+      3, int32s_col{0, 2, 3, 5}.release(), get_structs_expected().release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
     auto const results_sorted = set_intersect_sorted(*lhs, *rhs, NULL_EQUAL);
     CUDF_TEST_EXPECT_COLUMNS_EQUIVALENT(*expected, *results_sorted);
@@ -539,11 +539,11 @@ TEST_F(SetIntersectTest, InputListsOfNestedStructsHaveNull)
     };
 
     auto const lhs = cudf::make_lists_column(
-      3, int32s_col{0, 8, 16, 24}.release(), get_structs_lhs().release(), 0, {});
+      3, int32s_col{0, 8, 16, 24}.release(), get_structs_lhs().release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
     auto const rhs = cudf::make_lists_column(
-      3, int32s_col{0, 8, 16, 24}.release(), get_structs_rhs().release(), 0, {});
+      3, int32s_col{0, 8, 16, 24}.release(), get_structs_rhs().release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
     auto const expected = cudf::make_lists_column(
-      3, int32s_col{0, 0, 0, 0}.release(), get_structs_expected().release(), 0, {});
+      3, int32s_col{0, 0, 0, 0}.release(), get_structs_expected().release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
     auto const results_sorted = set_intersect_sorted(*lhs, *rhs, NULL_UNEQUAL);
     CUDF_TEST_EXPECT_COLUMNS_EQUAL(*expected, *results_sorted);
@@ -578,7 +578,7 @@ TEST_F(SetIntersectTest, InputListsOfStructsOfLists)
     };
 
     return cudf::make_lists_column(
-      3, int32s_col{0, 3, 4, 7}.release(), get_structs().release(), 0, {});
+      3, int32s_col{0, 3, 4, 7}.release(), get_structs().release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
   }();
 
   auto const rhs = [] {
@@ -607,7 +607,7 @@ TEST_F(SetIntersectTest, InputListsOfStructsOfLists)
     };
 
     return cudf::make_lists_column(
-      3, int32s_col{0, 3, 4, 7}.release(), get_structs().release(), 0, {});
+      3, int32s_col{0, 3, 4, 7}.release(), get_structs().release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
   }();
 
   auto const expected = [] {
@@ -618,7 +618,7 @@ TEST_F(SetIntersectTest, InputListsOfStructsOfLists)
     };
 
     return cudf::make_lists_column(
-      3, int32s_col{0, 1, 2, 3}.release(), get_structs().release(), 0, {});
+      3, int32s_col{0, 1, 2, 3}.release(), get_structs().release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
   }();
 
   auto const results = cudf::lists::intersect_distinct(lists_cv{*lhs}, lists_cv{*rhs});

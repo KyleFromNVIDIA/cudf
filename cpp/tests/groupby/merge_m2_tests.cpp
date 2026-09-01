@@ -64,7 +64,7 @@ auto compute_partial_results(cudf::column_view const& keys, cudf::column_view co
   auto const num_output_rows     = out_keys->num_rows();
   return std::pair(std::move(out_keys->release()[0]),
                    cudf::make_structs_column(
-                     num_output_rows, std::move(out_results[0].results), 0, rmm::device_buffer{}));
+                     num_output_rows, std::move(out_results[0].results), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED)));
 }
 
 /**

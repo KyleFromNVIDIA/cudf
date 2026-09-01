@@ -791,7 +791,7 @@ struct to_string_view_pair {
 template <typename string_view_pair_it>
 static std::unique_ptr<column> parse_string(string_view_pair_it str_tuples,
                                             size_type col_size,
-                                            rmm::device_buffer&& null_mask,
+                                            cuda::device_buffer<uint8_t>&& null_mask,
                                             cudf::detail::device_scalar<size_type>& d_null_count,
                                             cudf::io::parse_options_view const& options,
                                             cuda::stream_ref stream,
@@ -812,7 +812,7 @@ static std::unique_ptr<column> parse_string(string_view_pair_it str_tuples,
   auto null_count_data = d_null_count.data();
 
   auto single_thread_fn = string_parse<decltype(str_tuples)>{
-    str_tuples, static_cast<bitmask_type*>(null_mask.data()), null_count_data, options, d_sizes};
+    str_tuples, reinterpret_cast<bitmask_type*>(null_mask.data()), null_count_data, options, d_sizes};
   thrust::for_each_n(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                      cuda::counting_iterator<size_type>{0},
                      col_size,
@@ -831,7 +831,7 @@ static std::unique_ptr<column> parse_string(string_view_pair_it str_tuples,
         str_tuples,
         col_size,
         str_counter.data(),
-        static_cast<bitmask_type*>(null_mask.data()),
+        reinterpret_cast<bitmask_type*>(null_mask.data()),
         null_count_data,
         options,
         d_sizes,
@@ -848,7 +848,7 @@ static std::unique_ptr<column> parse_string(string_view_pair_it str_tuples,
         str_tuples,
         col_size,
         str_counter.data(),
-        static_cast<bitmask_type*>(null_mask.data()),
+        reinterpret_cast<bitmask_type*>(null_mask.data()),
         null_count_data,
         options,
         d_sizes,
@@ -879,7 +879,7 @@ static std::unique_ptr<column> parse_string(string_view_pair_it str_tuples,
         str_tuples,
         col_size,
         str_counter.data(),
-        static_cast<bitmask_type*>(null_mask.data()),
+        reinterpret_cast<bitmask_type*>(null_mask.data()),
         null_count_data,
         options,
         d_sizes,
@@ -896,7 +896,7 @@ static std::unique_ptr<column> parse_string(string_view_pair_it str_tuples,
         str_tuples,
         col_size,
         str_counter.data(),
-        static_cast<bitmask_type*>(null_mask.data()),
+        reinterpret_cast<bitmask_type*>(null_mask.data()),
         null_count_data,
         options,
         d_sizes,
@@ -917,7 +917,7 @@ std::unique_ptr<column> parse_data(
   cuda::zip_iterator<size_type const*, size_type const*> offset_length_begin,
   size_type col_size,
   data_type col_type,
-  rmm::device_buffer&& null_mask,
+  cuda::device_buffer<uint8_t>&& null_mask,
   size_type null_count,
   cudf::io::parse_options_view const& options,
   cuda::stream_ref stream,
@@ -929,7 +929,7 @@ std::unique_ptr<column> parse_data(
   auto d_null_count = cudf::detail::device_scalar<size_type>(
     null_count, stream, cudf::get_current_device_resource_ref());
   auto null_count_data = d_null_count.data();
-  if (null_mask.is_empty()) {
+  if (null_mask.empty()) {
     null_mask = cudf::create_null_mask(col_size, mask_state::ALL_VALID, stream, mr);
   }
 

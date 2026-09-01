@@ -1171,7 +1171,11 @@ void delta_large_mini_block_list_read_test(std::vector<uint8_t> const& file_byte
     cudf::test::fixed_width_column_wrapper<int64_t>(leaf_values.begin(), leaf_values.end());
   auto const num_lists    = static_cast<cudf::size_type>(expected.size());
   auto const expected_col = cudf::make_lists_column(
-    num_lists, offsets_col.release(), child.release(), 0, rmm::device_buffer{});
+    num_lists,
+    offsets_col.release(),
+    child.release(),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto const start           = static_cast<cudf::size_type>(skip_rows);
   auto const end             = num_rows.has_value() ? start + *num_rows : num_lists;
@@ -1200,7 +1204,11 @@ void delta_large_mini_block_string_list_read_test(
   auto child              = cudf::test::strings_column_wrapper(leaf.begin(), leaf.end());
   auto const num_lists    = static_cast<cudf::size_type>(expected.size());
   auto const expected_col = cudf::make_lists_column(
-    num_lists, offsets_col.release(), child.release(), 0, rmm::device_buffer{});
+    num_lists,
+    offsets_col.release(),
+    child.release(),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto const start           = static_cast<cudf::size_type>(skip_rows);
   auto const end             = num_rows.has_value() ? start + *num_rows : num_lists;
@@ -1468,7 +1476,8 @@ TEST_F(ParquetReaderTest, DeltaBinaryListLargeMiniBlockLeafNulls)
                                                 offsets_col.release(),
                                                 child.release(),
                                                 0,
-                                                rmm::device_buffer{});
+                                                cudf::create_null_mask(
+                                                  0, cudf::mask_state::UNALLOCATED));
 
   for (auto const& [block_size, mini_block_count] :
        {std::pair{128, 1}, std::pair{384, 4}, std::pair{256, 1}}) {
@@ -1782,7 +1791,12 @@ TEST_F(ParquetReaderTest, NestingOptimizationTest)
 
     cudf::test::fixed_width_column_wrapper<cudf::size_type> offsets(offsets_iter,
                                                                     offsets_iter + num_rows + 1);
-    auto c   = cudf::make_lists_column(num_rows, offsets.release(), std::move(prev_col), 0, {});
+    auto c = cudf::make_lists_column(
+      num_rows,
+      offsets.release(),
+      std::move(prev_col),
+      0,
+      cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
     prev_col = std::move(c);
   }
   auto const& expect = prev_col;
@@ -3013,7 +3027,7 @@ TEST_F(ParquetReaderTest, RepeatedNoAnnotations)
   auto num_list_rows = list_offsets_column->size() - 1;
 
   auto mask = cudf::create_null_mask(6, cudf::mask_state::ALL_VALID);
-  cudf::set_null_mask(static_cast<cudf::bitmask_type*>(mask.data()), 0, 2, false);
+  cudf::set_null_mask(reinterpret_cast<cudf::bitmask_type*>(mask.data()), 0, 2, false);
 
   auto list_col = cudf::make_lists_column(
     num_list_rows, std::move(list_offsets_column), struct_col.release(), 2, std::move(mask));
@@ -3126,7 +3140,11 @@ TEST_F(ParquetReaderTest, RepeatedNoAnnotationsSingleFieldNested)
   auto inner_struct       = cudf::test::structs_column_wrapper{{inner_someid}};
   auto inner_list_offsets = cudf::test::fixed_width_column_wrapper<int32_t>{0, 1, 2, 3}.release();
   auto inner_list         = cudf::make_lists_column(
-    3, std::move(inner_list_offsets), inner_struct.release(), 0, rmm::device_buffer{});
+    3,
+    std::move(inner_list_offsets),
+    inner_struct.release(),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   column_wrapper<int32_t> outer_id{1, 4, 7};
   std::vector<std::unique_ptr<cudf::column>> outer_struct_children;
@@ -3136,7 +3154,11 @@ TEST_F(ParquetReaderTest, RepeatedNoAnnotationsSingleFieldNested)
 
   auto outer_list_offsets = cudf::test::fixed_width_column_wrapper<int32_t>{0, 1, 2, 3}.release();
   auto outer_list_col     = cudf::make_lists_column(
-    3, std::move(outer_list_offsets), outer_struct_col.release(), 0, rmm::device_buffer{});
+    3,
+    std::move(outer_list_offsets),
+    outer_struct_col.release(),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   // Testing for equivalence here because we only care about the outermost validity buffers.
   table_view expected{{col0, *outer_list_col}};
@@ -3372,7 +3394,11 @@ TEST_F(ParquetReaderTest, DeltaByteArrayStructSkipRows)
   std::vector<std::unique_ptr<cudf::column>> children;
   children.push_back(cudf::purge_nonempty_nulls(
     cudf::test::strings_column_wrapper(strings.begin(), strings.end(), str_valids)));
-  auto const struct_col = cudf::make_structs_column(num_rows, std::move(children), 0, {});
+  auto const struct_col = cudf::make_structs_column(
+    num_rows,
+    std::move(children),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
   auto const expected   = cudf::table_view({struct_col->view()});
 
   cudf::io::table_input_metadata md(expected);
@@ -3420,7 +3446,11 @@ TEST_F(ParquetReaderTest, DeltaByteArrayMapSkipRows)
   auto offsets_col =
     cudf::test::fixed_width_column_wrapper<int32_t>(offsets.begin(), offsets.end());
   auto const map_col = cudf::make_lists_column(
-    num_rows, offsets_col.release(), std::move(struct_col), 0, rmm::device_buffer{});
+    num_rows,
+    offsets_col.release(),
+    std::move(struct_col),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
   auto const expected = cudf::table_view({map_col->view()});
 
   cudf::io::table_input_metadata md(expected);
@@ -3940,8 +3970,12 @@ TEST_F(ParquetMetadataReaderTest, Nested)
   }
   column_wrapper<int> offsets(row_offsets.begin(), row_offsets.end());
 
-  auto list_col =
-    cudf::make_lists_column(num_rows, offsets.release(), std::move(s_col), 0, rmm::device_buffer{});
+  auto list_col = cudf::make_lists_column(
+    num_rows,
+    offsets.release(),
+    std::move(s_col),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   table_view expected({*list_col, *list_col});
 

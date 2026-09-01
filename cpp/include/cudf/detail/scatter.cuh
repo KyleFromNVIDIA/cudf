@@ -309,7 +309,7 @@ struct column_scatterer_impl<struct_view> {
     result.emplace_back(cudf::make_structs_column(target.size(),
                                                   std::move(output_struct_members),
                                                   0,
-                                                  rmm::device_buffer{0, stream, mr},
+                                                  cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr),
                                                   stream,
                                                   mr));
 

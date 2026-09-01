@@ -138,14 +138,14 @@ TYPED_TEST(groupby_collect_list_test, CollectOnEmptyInputLists)
 
   cudf::test::fixed_width_column_wrapper<K, int32_t> keys{};
   auto values =
-    cudf::make_lists_column(0, cudf::make_empty_column(offsets), LCW{}.release(), 0, {});
+    cudf::make_lists_column(0, cudf::make_empty_column(offsets), LCW{}.release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   cudf::test::fixed_width_column_wrapper<K, int32_t> expect_keys{};
 
   auto expect_child =
-    cudf::make_lists_column(0, cudf::make_empty_column(offsets), LCW{}.release(), 0, {});
+    cudf::make_lists_column(0, cudf::make_empty_column(offsets), LCW{}.release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
   auto expect_values =
-    cudf::make_lists_column(0, cudf::make_empty_column(offsets), std::move(expect_child), 0, {});
+    cudf::make_lists_column(0, cudf::make_empty_column(offsets), std::move(expect_child), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto agg = cudf::make_collect_list_aggregation<cudf::groupby_aggregation>();
   test_single_agg(keys, values->view(), expect_keys, expect_values->view(), std::move(agg));
@@ -163,7 +163,7 @@ TYPED_TEST(groupby_collect_list_test, CollectOnEmptyInputListsOfStructs)
   auto struct_column = cudf::test::structs_column_wrapper{{struct_child}};
 
   auto values = cudf::make_lists_column(
-    0, cudf::make_empty_column(cudf::type_id::INT32), struct_column.release(), 0, {});
+    0, cudf::make_empty_column(cudf::type_id::INT32), struct_column.release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   cudf::test::fixed_width_column_wrapper<K, int32_t> expect_keys{};
 
@@ -171,9 +171,9 @@ TYPED_TEST(groupby_collect_list_test, CollectOnEmptyInputListsOfStructs)
   auto expect_struct_column = cudf::test::structs_column_wrapper{{expect_struct_child}};
 
   auto expect_child = cudf::make_lists_column(
-    0, cudf::make_empty_column(cudf::type_id::INT32), expect_struct_column.release(), 0, {});
+    0, cudf::make_empty_column(cudf::type_id::INT32), expect_struct_column.release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
   auto expect_values = cudf::make_lists_column(
-    0, cudf::make_empty_column(cudf::type_id::INT32), std::move(expect_child), 0, {});
+    0, cudf::make_empty_column(cudf::type_id::INT32), std::move(expect_child), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto agg = cudf::make_collect_list_aggregation<cudf::groupby_aggregation>();
   test_single_agg(keys, values->view(), expect_keys, expect_values->view(), std::move(agg));
@@ -195,7 +195,7 @@ TYPED_TEST(groupby_collect_list_test, dictionary)
                                              std::make_unique<cudf::column>(offsets),
                                              std::make_unique<cudf::column>(vals),
                                              0,
-                                             rmm::device_buffer{});
+                                             cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   test_single_agg(keys,
                   vals,

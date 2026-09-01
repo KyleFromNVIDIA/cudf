@@ -400,12 +400,16 @@ TEST_F(CudftableTest, Lists)
   auto lists_of_lists_offsets =
     cudf::test::fixed_width_column_wrapper<int32_t>{0, 2, 4, 6, 6}.release();
   auto lists_of_lists_col = cudf::make_lists_column(
-    4, std::move(lists_of_lists_offsets), child_list.release(), 0, rmm::device_buffer{});
+    4, std::move(lists_of_lists_offsets), child_list.release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   cudf::test::strings_column_wrapper strings_child{"hello", "world", "foo", "bar", "baz", "test"};
   auto strings_offsets = cudf::test::fixed_width_column_wrapper<int32_t>{0, 2, 5, 5, 6}.release();
   auto lists_of_strings_col = cudf::make_lists_column(
-    4, std::move(strings_offsets), strings_child.release(), 0, rmm::device_buffer{});
+    4,
+    std::move(strings_offsets),
+    strings_child.release(),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   cudf::test::fixed_width_column_wrapper<cudf::timestamp_ms> timestamps_child{
     cudf::timestamp_ms{100ms},
@@ -417,7 +421,11 @@ TEST_F(CudftableTest, Lists)
   auto timestamps_offsets =
     cudf::test::fixed_width_column_wrapper<int32_t>{0, 2, 3, 3, 6}.release();
   auto lists_of_timestamps_col = cudf::make_lists_column(
-    4, std::move(timestamps_offsets), timestamps_child.release(), 0, rmm::device_buffer{});
+    4,
+    std::move(timestamps_offsets),
+    timestamps_child.release(),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   cudf::test::fixed_width_column_wrapper<cudf::duration_ns> durations_child{
     cudf::duration_ns{1000ns},
@@ -427,13 +435,21 @@ TEST_F(CudftableTest, Lists)
     cudf::duration_ns{5000ns}};
   auto durations_offsets = cudf::test::fixed_width_column_wrapper<int32_t>{0, 2, 3, 3, 5}.release();
   auto lists_of_durations_col = cudf::make_lists_column(
-    4, std::move(durations_offsets), durations_child.release(), 0, rmm::device_buffer{});
+    4,
+    std::move(durations_offsets),
+    durations_child.release(),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   cudf::test::fixed_point_column_wrapper<int32_t> decimal32_child{
     {12345, -67890, 99999, 0}, {true, true, true, true}, scale_type{2}};
   auto decimal32_offsets = cudf::test::fixed_width_column_wrapper<int32_t>{0, 2, 3, 3, 4}.release();
   auto lists_of_decimals_col = cudf::make_lists_column(
-    4, std::move(decimal32_offsets), decimal32_child.release(), 0, rmm::device_buffer{});
+    4,
+    std::move(decimal32_offsets),
+    decimal32_child.release(),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   cudf::test::fixed_width_column_wrapper<int32_t> struct_col1{1, 2, 3, 4, 5, 6};
   cudf::test::strings_column_wrapper struct_col2{"a", "b", "c", "d", "e", "f"};
@@ -441,7 +457,11 @@ TEST_F(CudftableTest, Lists)
   auto lists_of_structs_offsets =
     cudf::test::fixed_width_column_wrapper<int32_t>{0, 1, 3, 4, 6}.release();
   auto lists_of_structs_col = cudf::make_lists_column(
-    4, std::move(lists_of_structs_offsets), struct_col.release(), 0, rmm::device_buffer{});
+    4,
+    std::move(lists_of_structs_offsets),
+    struct_col.release(),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto const expected = cudf::table_view{{lists_of_lists_col->view(),
                                           lists_of_strings_col->view(),
@@ -487,11 +507,19 @@ TEST_F(CudftableTest, DeepNestingLists)
 
   auto level2_offsets = cudf::test::fixed_width_column_wrapper<int32_t>{0, 2, 4}.release();
   auto level2_list    = cudf::make_lists_column(
-    2, std::move(level2_offsets), level3_list.release(), 0, rmm::device_buffer{});
+    2,
+    std::move(level2_offsets),
+    level3_list.release(),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto level1_offsets = cudf::test::fixed_width_column_wrapper<int32_t>{0, 2}.release();
   auto level1_list    = cudf::make_lists_column(
-    1, std::move(level1_offsets), std::move(level2_list), 0, rmm::device_buffer{});
+    1,
+    std::move(level1_offsets),
+    std::move(level2_list),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto const expected = cudf::table_view{{level1_list->view()}};
   run_test(expected);

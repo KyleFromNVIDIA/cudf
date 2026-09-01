@@ -253,7 +253,7 @@ std::unique_ptr<cudf::column> build_variant_column(std::span<std::span<uint8_t c
     auto d_data = rmm::device_buffer{flat.data(), flat.size() * sizeof(uint8_t), stream, mr};
 
     auto off_col = std::make_unique<cudf::column>(
-      cudf::data_type{cudf::type_id::INT32}, n + 1, std::move(d_offsets), rmm::device_buffer{}, 0);
+      cudf::data_type{cudf::type_id::INT32}, n + 1, std::move(d_offsets), cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0);
     auto data_col = std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::UINT8},
                                                    static_cast<cudf::size_type>(flat.size()),
                                                    std::move(d_data),

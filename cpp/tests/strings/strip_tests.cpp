@@ -92,7 +92,7 @@ TEST_F(StringsStripTest, EmptyStringsColumn)
 TEST_F(StringsStripTest, AllEmptyStrings)
 {
   auto input =
-    cudf::test::strings_column_wrapper({"", "", "", "", "", ""}, {true, true, false, true, true});
+    cudf::test::strings_column_wrapper({"", "", "", "", "", ""}, {true, true, false, true, true, true});
   auto results =
     cudf::strings::strip(cudf::strings_column_view(input), cudf::strings::side_type::BOTH);
   CUDF_TEST_EXPECT_COLUMNS_EQUAL(*results, input);

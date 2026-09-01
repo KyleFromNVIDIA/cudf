@@ -220,7 +220,7 @@ std::unique_ptr<cudf::column> character_tokenize(cudf::strings_column_view const
                output_chars.data());
 
   auto output_strings = cudf::make_strings_column(
-    num_characters, std::move(offsets_column), output_chars.release(), 0, rmm::device_buffer{});
+    num_characters, std::move(offsets_column), output_chars.release(), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
   return cudf::make_lists_column(strings_count,
                                  std::move(list_offsets),
                                  std::move(output_strings),

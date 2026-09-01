@@ -116,7 +116,7 @@ TYPED_TEST(NumericFactoryTest, AllNullMask)
 
 TYPED_TEST(NumericFactoryTest, NullMaskAsParm)
 {
-  rmm::device_buffer null_mask{create_null_mask(this->size(), cudf::mask_state::ALL_NULL)};
+  auto null_mask = create_null_mask(this->size(), cudf::mask_state::ALL_NULL);
   auto column = cudf::make_numeric_column(cudf::data_type{cudf::type_to_id<TypeParam>()},
                                           this->size(),
                                           std::move(null_mask),
@@ -132,7 +132,7 @@ TYPED_TEST(NumericFactoryTest, NullMaskAsParm)
 TYPED_TEST(NumericFactoryTest, NullMaskAsEmptyParm)
 {
   auto column = cudf::make_numeric_column(
-    cudf::data_type{cudf::type_to_id<TypeParam>()}, this->size(), rmm::device_buffer{}, 0);
+    cudf::data_type{cudf::type_to_id<TypeParam>()}, this->size(), cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0);
   EXPECT_EQ(column->type(), cudf::data_type{cudf::type_to_id<TypeParam>()});
   EXPECT_EQ(column->size(), this->size());
   EXPECT_EQ(0, column->null_count());
@@ -259,7 +259,7 @@ TYPED_TEST(FixedWidthFactoryTest, AllNullMask)
 
 TYPED_TEST(FixedWidthFactoryTest, NullMaskAsParm)
 {
-  rmm::device_buffer null_mask{create_null_mask(this->size(), cudf::mask_state::ALL_NULL)};
+  auto null_mask = create_null_mask(this->size(), cudf::mask_state::ALL_NULL);
   auto column = cudf::make_fixed_width_column(cudf::data_type{cudf::type_to_id<TypeParam>()},
                                               this->size(),
                                               std::move(null_mask),
@@ -275,7 +275,7 @@ TYPED_TEST(FixedWidthFactoryTest, NullMaskAsParm)
 TYPED_TEST(FixedWidthFactoryTest, NullMaskAsEmptyParm)
 {
   auto column = cudf::make_fixed_width_column(
-    cudf::data_type{cudf::type_to_id<TypeParam>()}, this->size(), rmm::device_buffer{}, 0);
+    cudf::data_type{cudf::type_to_id<TypeParam>()}, this->size(), cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0);
   EXPECT_EQ(column->type(), cudf::data_type{cudf::type_to_id<TypeParam>()});
   EXPECT_EQ(column->size(), this->size());
   EXPECT_EQ(0, column->null_count());
@@ -456,7 +456,7 @@ TYPED_TEST(ListsDictionaryLeafTest, FromNested)
   DCW leaf({1, 3, -1, 1, 3, 1, 3, -1, 1, 3}, {1, 1, 0, 1, 1, 1, 1, 0, 1, 1});
   offset_t offsets{0, 3, 3, 6, 6, 10};
   auto mask = cudf::create_null_mask(5, cudf::mask_state::ALL_VALID);
-  cudf::set_null_mask(static_cast<cudf::bitmask_type*>(mask.data()), 1, 2, false);
+  cudf::set_null_mask(reinterpret_cast<cudf::bitmask_type*>(mask.data()), 1, 2, false);
   auto data = cudf::make_lists_column(5, offsets.release(), leaf.release(), 0, std::move(mask));
 
   auto s   = cudf::make_list_scalar(*data);
@@ -468,9 +468,9 @@ TYPED_TEST(ListsDictionaryLeafTest, FromNested)
     {1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1});
   offset_t offsets2{0, 3, 3, 6, 6, 10, 13, 13, 16, 16, 20, 23, 23, 26, 26, 30};
   auto mask2 = cudf::create_null_mask(15, cudf::mask_state::ALL_VALID);
-  cudf::set_null_mask(static_cast<cudf::bitmask_type*>(mask2.data()), 1, 2, false);
-  cudf::set_null_mask(static_cast<cudf::bitmask_type*>(mask2.data()), 6, 7, false);
-  cudf::set_null_mask(static_cast<cudf::bitmask_type*>(mask2.data()), 11, 12, false);
+  cudf::set_null_mask(reinterpret_cast<cudf::bitmask_type*>(mask2.data()), 1, 2, false);
+  cudf::set_null_mask(reinterpret_cast<cudf::bitmask_type*>(mask2.data()), 6, 7, false);
+  cudf::set_null_mask(reinterpret_cast<cudf::bitmask_type*>(mask2.data()), 11, 12, false);
   auto nested = [&] {
     auto tmp =
       cudf::make_lists_column(15, offsets2.release(), leaf2.release(), 3, std::move(mask2));
@@ -586,7 +586,7 @@ TYPED_TEST(ListsStructsLeafTest, FromNested)
     LCWinner_t({LCWinner_t{}, LCWinner_t{42}}, valid_t{1, 1}.begin()),
     valid_t{0, 1}.begin());
   auto mask = cudf::create_null_mask(3, cudf::mask_state::ALL_VALID);
-  cudf::set_null_mask(static_cast<cudf::bitmask_type*>(mask.data()), 0, 1, false);
+  cudf::set_null_mask(reinterpret_cast<cudf::bitmask_type*>(mask.data()), 0, 1, false);
   auto data =
     cudf::make_lists_column(3, offset_t{0, 0, 1, 2}.release(), leaf.release(), 1, std::move(mask));
   auto s = cudf::make_list_scalar(*data);
@@ -602,9 +602,9 @@ TYPED_TEST(ListsStructsLeafTest, FromNested)
       valid_t{1, 1, 1, 1, 1, 1}.begin()),
     valid_t{0, 1, 0, 1, 0, 1}.begin());
   auto mask2 = cudf::create_null_mask(9, cudf::mask_state::ALL_VALID);
-  cudf::set_null_mask(static_cast<cudf::bitmask_type*>(mask2.data()), 0, 1, false);
-  cudf::set_null_mask(static_cast<cudf::bitmask_type*>(mask2.data()), 3, 4, false);
-  cudf::set_null_mask(static_cast<cudf::bitmask_type*>(mask2.data()), 6, 7, false);
+  cudf::set_null_mask(reinterpret_cast<cudf::bitmask_type*>(mask2.data()), 0, 1, false);
+  cudf::set_null_mask(reinterpret_cast<cudf::bitmask_type*>(mask2.data()), 3, 4, false);
+  cudf::set_null_mask(reinterpret_cast<cudf::bitmask_type*>(mask2.data()), 6, 7, false);
   auto data2 = [&] {
     auto tmp = cudf::make_lists_column(
       9, offset_t{0, 0, 1, 2, 2, 3, 4, 4, 5, 6}.release(), leaf2.release(), 3, std::move(mask2));

@@ -225,7 +225,11 @@ std::unique_ptr<cudf::column> ngrams_tokenize(cudf::strings_column_view const& s
     ngram_sizes.begin(), ngram_sizes.end(), stream, mr));
   // create the output strings column
   return make_strings_column(
-    total_ngrams, std::move(offsets_column), chars.release(), 0, rmm::device_buffer{});
+    total_ngrams,
+    std::move(offsets_column),
+    chars.release(),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 }
 
 }  // namespace detail

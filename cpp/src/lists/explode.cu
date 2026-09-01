@@ -83,8 +83,8 @@ std::unique_ptr<table> build_table(
                                                [] __device__(auto i) { return i != InvalidIndex; },
                                                stream,
                                                mr)
-                                           : std::pair<rmm::device_buffer, size_type>{
-                                               rmm::device_buffer(0, stream), size_type{0}};
+                                           : std::pair<cuda::device_buffer<uint8_t>, size_type>{
+                                               cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream), size_type{0}};
 
     columns.insert(columns.begin() + explode_column_idx,
                    std::make_unique<column>(data_type(type_to_id<size_type>()),

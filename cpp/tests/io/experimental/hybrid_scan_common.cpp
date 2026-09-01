@@ -118,7 +118,7 @@ std::unique_ptr<cudf::column> make_list_str_column(std::mt19937& gen,
     if (is_list_nullable) {
       return cudf::test::detail::make_null_mask(list_valids, list_valids + num_rows);
     } else {
-      return std::make_pair(rmm::device_buffer{}, 0);
+      return std::make_pair(cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0);
     }
   }();
   return cudf::make_lists_column(
@@ -345,8 +345,13 @@ std::pair<std::unique_ptr<cudf::table>, std::vector<char>> create_parquet_with_s
 
     auto const make_null_mask = [stream](auto begin, auto end) {
       auto [null_mask, null_count] = cudf::test::detail::make_null_mask_vector(begin, end);
-      auto d_mask                  = rmm::device_buffer{
-        null_mask.data(), cudf::bitmask_allocation_size_bytes(cudf::distance(begin, end)), stream};
+      auto d_mask = cudf::create_null_mask(
+        cudf::distance(begin, end), cudf::mask_state::UNINITIALIZED, stream);
+      CUDF_CUDA_TRY(cudaMemcpyAsync(d_mask.data(),
+                                   null_mask.data(),
+                                   d_mask.size(),
+                                   cudaMemcpyHostToDevice,
+                                   stream.get()));
       stream.sync();
       return std::pair{std::move(d_mask), null_count};
     };

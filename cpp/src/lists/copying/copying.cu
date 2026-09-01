@@ -56,7 +56,7 @@ std::unique_ptr<cudf::column> copy_slice(lists_column_view const& lists,
   auto offsets = std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::INT32},
                                                 offsets_count,
                                                 out_offsets.release(),
-                                                rmm::device_buffer{},
+                                                cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
                                                 0);
 
   // Compute the child column of the result.
@@ -75,7 +75,7 @@ std::unique_ptr<cudf::column> copy_slice(lists_column_view const& lists,
   auto null_mask = cudf::detail::copy_bitmask(lists.null_mask(), start, end, stream, mr);
 
   auto null_count = cudf::detail::null_count(
-    static_cast<bitmask_type const*>(null_mask.data()), 0, end - start, stream);
+    reinterpret_cast<bitmask_type const*>(null_mask.data()), 0, end - start, stream);
 
   return make_lists_column(
     lists_count, std::move(offsets), std::move(child), null_count, std::move(null_mask));

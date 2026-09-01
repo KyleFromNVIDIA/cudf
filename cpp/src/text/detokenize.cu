@@ -155,7 +155,11 @@ std::unique_ptr<cudf::column> detokenize(cudf::strings_column_view const& string
 
   // make the output strings column from the offsets and chars column
   return cudf::make_strings_column(
-    output_count, std::move(offsets_column), chars.release(), 0, rmm::device_buffer{});
+    output_count,
+    std::move(offsets_column),
+    chars.release(),
+    0,
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 }
 
 }  // namespace detail

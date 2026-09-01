@@ -91,7 +91,7 @@ TEST_F(CompoundColumnTest, ChildrenLevel1)
   auto parent = std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::STRING},
                                                100,
                                                rmm::device_buffer{},
-                                               rmm::device_buffer{},
+                                               cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
                                                0,
                                                std::move(children));
 
@@ -173,13 +173,13 @@ TEST_F(CompoundColumnTest, ChildrenLevel2)
   auto children1 = std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::STRING},
                                                   100,
                                                   rmm::device_buffer{},
-                                                  rmm::device_buffer{},
+                                                  cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
                                                   0,
                                                   std::move(gchildren1));
   auto children2 = std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::STRING},
                                                   100,
                                                   rmm::device_buffer{},
-                                                  rmm::device_buffer{},
+                                                  cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
                                                   0,
                                                   std::move(gchildren2));
 
@@ -189,7 +189,7 @@ TEST_F(CompoundColumnTest, ChildrenLevel2)
   auto parent = std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::STRING},
                                                100,
                                                rmm::device_buffer{},
-                                               rmm::device_buffer{},
+                                               cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
                                                0,
                                                std::move(children));
 

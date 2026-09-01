@@ -156,7 +156,7 @@ std::unique_ptr<cudf::column> out_of_place_copy_range_dispatch::operator()<cudf:
     target_indices->type(),
     dict_target.size(),
     target_indices->mutable_view().head(),
-    static_cast<cudf::bitmask_type*>(target_contents.null_mask->data()),
+    reinterpret_cast<cudf::bitmask_type*>(target_contents.null_mask->data()),
     dict_target.null_count());
   cudf::type_dispatcher(new_indices.type(),
                         in_place_copy_range_dispatch{source_indices, new_indices},
@@ -169,7 +169,7 @@ std::unique_ptr<cudf::column> out_of_place_copy_range_dispatch::operator()<cudf:
     std::make_unique<cudf::column>(new_indices.type(),
                                    new_indices.size(),
                                    std::move(*(target_indices->release().data.release())),
-                                   rmm::device_buffer{0, stream, mr},
+                                   cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr),
                                    0);
 
   // take the keys from the matched column allocated using mr
