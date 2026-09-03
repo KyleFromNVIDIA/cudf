@@ -278,12 +278,8 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-<<<<<<< HEAD
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@test-gb300
-=======
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).cpp_files || fromJSON(needs.changed-files.outputs.changed_file_groups).test_cmake
->>>>>>> main
     with:
       build_type: pull-request
       node_type: cpu16
@@ -298,14 +294,9 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-<<<<<<< HEAD
-    needs: checks
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@test-gb300
-=======
     needs: [checks, changed-files]
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).cpp_files || fromJSON(needs.changed-files.outputs.changed_file_groups).cpp_linters
->>>>>>> main
     with:
       build_type: pull-request
       script: "ci/cpp_linters.sh"
@@ -330,13 +321,8 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-<<<<<<< HEAD
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@test-gb300
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
-=======
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).cpp_files || fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
->>>>>>> main
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
@@ -402,7 +388,6 @@ jobs:
       # https://github.com/NVIDIA/cudf/pull/22381/changes#r3196736965
       container-options: "--cap-add CAP_SYS_PTRACE --shm-size=8g --ulimit=nofile=1000000:1000000"
       script: "ci/test_python_other.sh"
-<<<<<<< HEAD
   conda-java-tests:
     needs: [conda-cpp-build, changed-files]
     permissions:
@@ -420,10 +405,6 @@ jobs:
       arch: "amd64"
       container_image: "rapidsai/ci-conda:26.10-latest"
       script: "ci/test_java.sh"
-=======
-      # https://github.com/NVIDIA/cudf/issues/23498
-      matrix_filter: map(select(.GPU != "gb300" and .GPU != "gh200"))
->>>>>>> main
   # Build and test the cuDF Java JAR for every Maven classifier.
   java-build-matrix:
     needs: [checks]
@@ -736,13 +717,8 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-<<<<<<< HEAD
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@test-gb300
-    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels && fromJSON(needs.changed-files.outputs.changed_file_groups).not_cudf_polars
-=======
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_wheel_dask_cudf
->>>>>>> main
     with:
       # This selects "ARCH=amd64 + the latest supported Python + CUDA".
       matrix_filter: map(select(.ARCH == "arm64")) | group_by(.CUDA_VER|split(".")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(".")|map(tonumber)), (.CUDA_VER|split(".")|map(tonumber))]))
