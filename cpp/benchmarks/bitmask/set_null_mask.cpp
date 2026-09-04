@@ -41,10 +41,11 @@ auto generate_test_data(cudf::size_type num_masks,
 
   std::vector<cuda::device_buffer<uint8_t>> masks;
   masks.reserve(num_masks);
-  std::vector<cudf::bitmask_type*> masks_ptr(num_masks);
-  for (cudf::size_type i = 0; i < num_masks; ++i) {
-    masks.push_back(cudf::create_null_mask(mask_size, cudf::mask_state::UNINITIALIZED));
-    masks_ptr[i] = reinterpret_cast<cudf::bitmask_type*>(masks[i].data());
+  std::vector<cudf::bitmask_type*> masks_ptr;
+  masks_ptr.reserve(num_masks);
+  for (auto const& mask : masks) {
+    masks.emplace_back(cudf::create_null_mask(mask_size, cudf::mask_state::UNINITIALIZED));
+    masks_ptr.emplace_back(reinterpret_cast<cudf::bitmask_type*>(mask.data()));
   }
 
   return std::make_tuple(std::move(begin_bits),
