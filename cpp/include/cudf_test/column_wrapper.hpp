@@ -299,7 +299,12 @@ std::pair<cuda::device_buffer<uint8_t>, cudf::size_type> make_null_mask(
   cudf::memory_resources mr = cudf::get_current_device_resource_ref())
 {
   auto [null_mask, null_count] = make_null_mask_vector(begin, end);
-  auto d_mask                  = copy_bitmask(null_mask.data(), 0, null_count, stream, mr);
+  auto const* data             = reinterpret_cast<uint8_t const*>(null_mask.data());
+  cuda::device_buffer<uint8_t> d_mask{
+    stream,
+    mr.get_output_mr(),
+    data,
+    data + cudf::bitmask_allocation_size_bytes(cudf::distance(begin, end))};
   stream.sync();  // wait for async H2D before host source is destroyed
   return {std::move(d_mask), null_count};
 }
