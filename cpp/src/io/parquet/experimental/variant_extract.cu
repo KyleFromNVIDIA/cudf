@@ -1179,7 +1179,9 @@ struct cast_variant_fn {
     return std::make_unique<column>(desired_type,
                                     num_rows,
                                     std::move(data),
-                                    null_count > 0 ? std::move(null_mask) : rmm::device_buffer{},
+                                    null_count > 0
+                                      ? std::move(null_mask)
+                                      : cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
                                     null_count);
   }
 
