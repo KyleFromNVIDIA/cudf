@@ -130,7 +130,8 @@ struct allnull_column_functor {
   [[nodiscard]] auto make_zeroed_indices(size_type size) const
   {
     auto indices_buff = cudf::detail::make_zeroed_device_uvector_async<size_type>(size, stream, mr);
-    return std::make_unique<column>(std::move(indices_buff), rmm::device_buffer{}, 0);
+    return std::make_unique<column>(
+      std::move(indices_buff), cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0);
   }
 
  public:
