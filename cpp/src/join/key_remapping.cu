@@ -667,8 +667,11 @@ std::unique_ptr<cudf::column> remap_keys_internal(detail::key_remapping_impl con
                   not_found_sentinel);
 
   auto const row_count = static_cast<cudf::size_type>(indices->size());
-  return std::make_unique<cudf::column>(
-    cudf::data_type{cudf::type_id::INT32}, row_count, indices->release(), cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0);
+  return std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::INT32},
+                                        row_count,
+                                        indices->release(),
+                                        cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
+                                        0);
 }
 }  // namespace
 

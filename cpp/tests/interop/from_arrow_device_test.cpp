@@ -453,12 +453,11 @@ TEST_F(FromArrowDeviceTest, FixedSizeListColumnLarge)
     cudf::test::fixed_width_column_wrapper<int64_t>(values.begin(), values.end()).release();
   auto offsets_col =
     cudf::test::fixed_width_column_wrapper<int32_t>(offsets.begin(), offsets.end()).release();
-  auto expected = cudf::make_lists_column(
-    num_rows,
-    std::move(offsets_col),
-    std::move(child),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
+  auto expected = cudf::make_lists_column(num_rows,
+                                          std::move(offsets_col),
+                                          std::move(child),
+                                          0,
+                                          cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto input_schema = make_struct_fixed_size_list_int64_schema(width);
   nanoarrow::UniqueArray input_array;

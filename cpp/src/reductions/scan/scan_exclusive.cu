@@ -93,8 +93,7 @@ std::unique_ptr<column> scan_exclusive(column_view const& input,
     } else if (input.nullable()) {
       return mask_scan(input, scan_type::EXCLUSIVE, stream, mr);
     }
-    return std::make_pair(cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
-                          size_type{0});
+    return std::make_pair(cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), size_type{0});
   }();
 
   auto output = scan_agg_dispatch<scan_dispatcher>(

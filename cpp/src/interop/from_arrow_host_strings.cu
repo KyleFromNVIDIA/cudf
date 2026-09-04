@@ -120,12 +120,13 @@ std::unique_ptr<column> from_arrow_stringview(ArrowSchemaView const* schema,
 
 }  // namespace
 
-std::unique_ptr<column> string_column_from_arrow_host(ArrowSchemaView const* schema,
-                                                      ArrowArray const* input,
-                                                      std::unique_ptr<cuda::device_buffer<uint8_t>>&& mask,
-                                                      size_type null_count,
-                                                      cuda::stream_ref stream,
-                                                      rmm::device_async_resource_ref mr)
+std::unique_ptr<column> string_column_from_arrow_host(
+  ArrowSchemaView const* schema,
+  ArrowArray const* input,
+  std::unique_ptr<cuda::device_buffer<uint8_t>>&& mask,
+  size_type null_count,
+  cuda::stream_ref stream,
+  rmm::device_async_resource_ref mr)
 {
   return schema->type == NANOARROW_TYPE_STRING_VIEW
            ? from_arrow_stringview(schema, input, std::move(mask), stream, mr)

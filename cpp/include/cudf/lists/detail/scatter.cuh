@@ -120,8 +120,9 @@ std::unique_ptr<column> scatter_impl(rmm::device_uvector<unbound_list_view> cons
   std::vector<std::unique_ptr<column>> children;
   children.emplace_back(std::move(offsets_column));
   children.emplace_back(std::move(child_column));
-  auto null_mask = target.has_nulls() ? cudf::detail::copy_bitmask(target, stream, mr)
-                                      : cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr);
+  auto null_mask = target.has_nulls()
+                     ? cudf::detail::copy_bitmask(target, stream, mr)
+                     : cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr);
 
   // The output column from this function only has null masks copied from the target columns.
   // That is still not a correct final null mask for the scatter result.
@@ -224,8 +225,8 @@ std::unique_ptr<column> scatter(scalar const& slr,
   auto const num_rows = target.size();
   if (num_rows == 0) { return cudf::empty_like(target); }
 
-  auto lv                      = static_cast<list_scalar const*>(&slr);
-  bool slr_valid               = slr.is_valid(stream);
+  auto lv        = static_cast<list_scalar const*>(&slr);
+  bool slr_valid = slr.is_valid(stream);
   cuda::device_buffer<uint8_t> null_mask =
     slr_valid ? cudf::create_null_mask(1, mask_state::UNALLOCATED, stream, mr)
               : cudf::create_null_mask(1, mask_state::ALL_NULL, stream, mr);

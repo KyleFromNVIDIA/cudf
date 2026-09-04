@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2019-2026, NVIDIA CORPORATION.
+ * SPDX-FileCopyrightText: Copyright (c) 2019-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -140,11 +140,8 @@ TEST_F(StringsFactoriesTest, CreateColumnFromOffsets)
       h_offsets, cudf::get_default_stream(), cudf::get_current_device_resource_ref()),
     cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
     0);
-  auto d_nulls = cudf::create_null_mask(count, cudf::mask_state::UNINITIALIZED);
-  CUDF_CUDA_TRY(cudaMemcpy(d_nulls.data(),
-                           h_nulls.data(),
-                           h_nulls.size() * sizeof(cudf::bitmask_type),
-                           cudaMemcpyDefault));
+  auto d_nulls = cuda::device_buffer<uint8_t>{
+    cudf::get_default_stream(), cudf::get_current_device_resource_ref(), h_nulls};
   auto column = cudf::make_strings_column(
     count, std::move(d_offsets), d_buffer.release(), null_count, std::move(d_nulls));
   EXPECT_EQ(column->type(), cudf::data_type{cudf::type_id::STRING});
@@ -191,8 +188,7 @@ TEST_F(StringsFactoriesTest, EmptyStringsColumn)
       1, cudf::get_default_stream(), cudf::get_current_device_resource_ref()),
     cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
     0);
-  auto d_nulls =
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED);
+  auto d_nulls = cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED);
 
   auto results =
     cudf::make_strings_column(0, std::move(d_offsets), d_chars.release(), 0, std::move(d_nulls));

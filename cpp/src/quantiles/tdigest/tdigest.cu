@@ -221,7 +221,8 @@ std::unique_ptr<column> compute_approx_percentiles(tdigest_column_view const& in
                  },
                  stream,
                  mr)
-             : std::pair<cuda::device_buffer<uint8_t>, size_type>{cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0};
+             : std::pair<cuda::device_buffer<uint8_t>, size_type>{
+                 cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0};
   }();
 
   auto result = cudf::make_fixed_width_column(

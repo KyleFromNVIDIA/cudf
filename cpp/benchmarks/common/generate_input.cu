@@ -785,11 +785,12 @@ std::unique_ptr<cudf::column> create_random_column<cudf::list_view>(data_profile
     thrust::device_pointer_cast(offsets.end())[-1] =
       current_child_column->size();  // Always include all elements
 
-    auto offsets_column = std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::INT32},
-                                                         current_num_rows + 1,
-                                                         offsets.release(),
-                                                         cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
-                                                         0);
+    auto offsets_column =
+      std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::INT32},
+                                     current_num_rows + 1,
+                                     offsets.release(),
+                                     cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
+                                     0);
 
     auto [null_mask, null_count] = profile.get_null_probability().has_value()
                                      ? cudf::bools_to_mask(cudf::device_span<bool const>(valids))
@@ -1068,7 +1069,9 @@ std::unique_ptr<cudf::column> create_string_column(cudf::size_type num_rows,
 std::pair<cuda::device_buffer<uint8_t>, cudf::size_type> create_random_null_mask(
   cudf::size_type size, std::optional<double> null_probability, unsigned seed)
 {
-  if (not null_probability.has_value()) { return {cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0}; }
+  if (not null_probability.has_value()) {
+    return {cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0};
+  }
   CUDF_EXPECTS(*null_probability >= 0.0 and *null_probability <= 1.0,
                "Null probability must be within the range [0.0, 1.0]");
   if (*null_probability == 0.0f) {

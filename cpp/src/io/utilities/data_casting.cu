@@ -811,8 +811,12 @@ static std::unique_ptr<column> parse_string(string_view_pair_it str_tuples,
   auto d_sizes         = sizes.data();
   auto null_count_data = d_null_count.data();
 
-  auto single_thread_fn = string_parse<decltype(str_tuples)>{
-    str_tuples, reinterpret_cast<bitmask_type*>(null_mask.data()), null_count_data, options, d_sizes};
+  auto single_thread_fn =
+    string_parse<decltype(str_tuples)>{str_tuples,
+                                       reinterpret_cast<bitmask_type*>(null_mask.data()),
+                                       null_count_data,
+                                       options,
+                                       d_sizes};
   thrust::for_each_n(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                      cuda::counting_iterator<size_type>{0},
                      col_size,

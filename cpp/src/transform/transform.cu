@@ -97,7 +97,8 @@ struct mutable_string_views_column_view {
 struct string_views_column {
   rmm::device_buffer _data;
   size_type _size{0};
-  cuda::device_buffer<uint8_t> _null_mask = cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED);
+  cuda::device_buffer<uint8_t> _null_mask =
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED);
   size_type _null_count{0};
 
   static auto make(size_type size,

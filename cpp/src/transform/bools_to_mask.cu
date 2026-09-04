@@ -26,10 +26,9 @@ std::pair<std::unique_ptr<cuda::device_buffer<uint8_t>>, cudf::size_type> bools_
   CUDF_EXPECTS(input.type().id() == type_id::BOOL8, "Input is not of type bool");
 
   if (input.is_empty()) {
-    return std::pair(
-      std::make_unique<cuda::device_buffer<uint8_t>>(
-        cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED)),
-      0);
+    return std::pair(std::make_unique<cuda::device_buffer<uint8_t>>(
+                       cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED)),
+                     0);
   }
 
   auto input_device_view_ptr = column_device_view::create(input, stream);

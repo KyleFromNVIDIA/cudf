@@ -625,7 +625,8 @@ mark_join::mark_join(cudf::table_view const& left,
     cudf::has_nested_nulls(_left) && _nulls_equal == null_equality::UNEQUAL;
 
   auto const temp_mr = cudf::get_current_device_resource_ref();
-  auto row_bitmask_buffer = cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, temp_mr);
+  auto row_bitmask_buffer =
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, temp_mr);
   bitmask_type const* row_bitmask_ptr = nullptr;
   if (has_null_left_keys) {
     auto bitmask_buffer_and_ptr = build_row_bitmask(_left, stream);

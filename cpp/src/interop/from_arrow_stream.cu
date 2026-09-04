@@ -40,16 +40,18 @@ std::unique_ptr<column> make_empty_column_from_schema(ArrowSchema const* schema,
   auto const type{arrow_to_cudf_type(&schema_view)};
   switch (type.id()) {
     case type_id::EMPTY: {
-      return std::make_unique<column>(
-        data_type(type_id::EMPTY), 0, rmm::device_buffer{}, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0);
+      return std::make_unique<column>(data_type(type_id::EMPTY),
+                                      0,
+                                      rmm::device_buffer{},
+                                      cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
+                                      0);
     }
     case type_id::LIST: {
       return cudf::make_lists_column(0,
                                      cudf::make_empty_column(data_type{type_id::INT32}),
                                      make_empty_column_from_schema(schema->children[0], stream, mr),
                                      0,
-                                     cudf::create_null_mask(
-                                       0, cudf::mask_state::UNALLOCATED));
+                                     cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
     }
     case type_id::STRUCT: {
       std::vector<std::unique_ptr<column>> child_columns;
@@ -62,8 +64,7 @@ std::unique_ptr<column> make_empty_column_from_schema(ArrowSchema const* schema,
       return cudf::make_structs_column(0,
                                        std::move(child_columns),
                                        0,
-                                       cudf::create_null_mask(
-                                         0, cudf::mask_state::UNALLOCATED),
+                                       cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
                                        stream,
                                        mr);
     }

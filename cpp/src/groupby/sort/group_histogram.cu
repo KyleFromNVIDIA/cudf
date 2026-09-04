@@ -66,8 +66,7 @@ std::unique_ptr<column> build_histogram(column_view const& values,
   auto out_structs = make_structs_column(static_cast<size_type>(distinct_indices->size()),
                                          std::move(struct_children),
                                          0,
-                                         cudf::create_null_mask(
-                                           0, cudf::mask_state::UNALLOCATED),
+                                         cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
                                          stream,
                                          mr);
 

@@ -66,8 +66,7 @@ std::unique_ptr<column> scan_inclusive(column_view const& input,
   return make_structs_column(input.size(),
                              std::move(scanned_children),
                              0,
-                             cudf::create_null_mask(
-                               0, cudf::mask_state::UNALLOCATED, stream, mr),
+                             cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr),
                              stream,
                              mr);
 }

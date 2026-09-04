@@ -366,14 +366,18 @@ cuda::device_buffer<uint8_t> copy_bitmask(bitmask_type const* mask,
   if ((mask == nullptr) || (num_bytes == 0)) { return dest_mask; }
   if (begin_bit == 0) {
     auto const data = reinterpret_cast<uint8_t const*>(mask);
-    dest_mask       = cudf::create_null_mask(end_bit - begin_bit, cudf::mask_state::UNINITIALIZED, stream, mr);
-    CUDF_CUDA_TRY(cudaMemcpyAsync(dest_mask.data(), data, num_bytes, cudaMemcpyDeviceToDevice, stream.get()));
+    dest_mask       = cuda::device_buffer<uint8_t>{stream, mr, data, data + num_bytes};
   } else {
     auto number_of_mask_words = num_bitmask_words(end_bit - begin_bit);
-    dest_mask = cudf::create_null_mask(end_bit - begin_bit, cudf::mask_state::UNINITIALIZED, stream, mr);
+    dest_mask =
+      cudf::create_null_mask(end_bit - begin_bit, cudf::mask_state::UNINITIALIZED, stream, mr);
     cudf::detail::grid_1d config(number_of_mask_words, 256);
     copy_offset_bitmask<<<config.num_blocks, config.num_threads_per_block, 0, stream.get()>>>(
-      reinterpret_cast<bitmask_type*>(dest_mask.data()), mask, begin_bit, end_bit, number_of_mask_words);
+      reinterpret_cast<bitmask_type*>(dest_mask.data()),
+      mask,
+      begin_bit,
+      end_bit,
+      number_of_mask_words);
     CUDF_CHECK_CUDA(stream.get());
   }
   return dest_mask;
@@ -624,8 +628,9 @@ std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_and(
 }
 
 // Returns the bitwise AND of the null masks of all columns in the table view
-std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_and(
-  table_view const& view, cuda::stream_ref stream, rmm::device_async_resource_ref mr)
+std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_and(table_view const& view,
+                                                               cuda::stream_ref stream,
+                                                               rmm::device_async_resource_ref mr)
 {
   auto null_mask = cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr);
   if (view.num_rows() == 0 or view.num_columns() == 0) {
@@ -711,8 +716,9 @@ segmented_bitmask_and(host_span<bitmask_type const* const> masks,
 }
 
 // Returns the bitwise OR of the null masks of all columns in the table view
-std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_or(
-  table_view const& view, cuda::stream_ref stream, rmm::device_async_resource_ref mr)
+std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_or(table_view const& view,
+                                                              cuda::stream_ref stream,
+                                                              rmm::device_async_resource_ref mr)
 {
   auto null_mask = cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr);
   if (view.num_rows() == 0 or view.num_columns() == 0) {
@@ -841,8 +847,9 @@ cuda::device_buffer<uint8_t> copy_bitmask(column_view const& view,
   return detail::copy_bitmask(view, stream, mr);
 }
 
-std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_and(
-  table_view const& view, cuda::stream_ref stream, rmm::device_async_resource_ref mr)
+std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_and(table_view const& view,
+                                                               cuda::stream_ref stream,
+                                                               rmm::device_async_resource_ref mr)
 {
   CUDF_FUNC_RANGE();
   return detail::bitmask_and(view, stream, mr);
@@ -880,8 +887,9 @@ segmented_bitmask_and(host_span<bitmask_type const* const> masks,
   return detail::segmented_bitmask_and(masks, segment_offsets, mask_size_bits, stream, mr);
 }
 
-std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_or(
-  table_view const& view, cuda::stream_ref stream, rmm::device_async_resource_ref mr)
+std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_or(table_view const& view,
+                                                              cuda::stream_ref stream,
+                                                              rmm::device_async_resource_ref mr)
 {
   CUDF_FUNC_RANGE();
   return detail::bitmask_or(view, stream, mr);

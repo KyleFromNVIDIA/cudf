@@ -53,11 +53,12 @@ std::unique_ptr<cudf::column> copy_slice(lists_column_view const& lists,
     offsets_data + end + 1,  // size of offsets column is 1 greater than slice length
     out_offsets.data(),
     [start_offset] __device__(cudf::size_type i) { return i - start_offset; });
-  auto offsets = std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::INT32},
-                                                offsets_count,
-                                                out_offsets.release(),
-                                                cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
-                                                0);
+  auto offsets =
+    std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::INT32},
+                                   offsets_count,
+                                   out_offsets.release(),
+                                   cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
+                                   0);
 
   // Compute the child column of the result.
   // If the child of this lists column is itself a lists column, we call copy_slice() on it.

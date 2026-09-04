@@ -164,13 +164,13 @@ std::unique_ptr<cudf::column> out_of_place_copy_range_dispatch::operator()<cudf:
                         source_end,
                         target_begin,
                         stream);
-  auto null_count = new_indices.null_count();
-  auto indices_column =
-    std::make_unique<cudf::column>(new_indices.type(),
-                                   new_indices.size(),
-                                   std::move(*(target_indices->release().data.release())),
-                                   cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr),
-                                   0);
+  auto null_count     = new_indices.null_count();
+  auto indices_column = std::make_unique<cudf::column>(
+    new_indices.type(),
+    new_indices.size(),
+    std::move(*(target_indices->release().data.release())),
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr),
+    0);
 
   // take the keys from the matched column allocated using mr
   auto keys_column(std::move(target_contents.children.back()));

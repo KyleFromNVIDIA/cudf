@@ -152,7 +152,8 @@ class column_buffer_base {
 
  protected:
   rmm::device_buffer _data{};
-  cuda::device_buffer<uint8_t> _null_mask = cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED);
+  cuda::device_buffer<uint8_t> _null_mask =
+    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED);
   size_type _null_count{0};
   rmm::device_async_resource_ref _mr{cudf::get_current_device_resource_ref()};
 

@@ -53,11 +53,7 @@ std::unique_ptr<column> make_empty_column(data_type type)
                "make_empty_column is invalid to call on nested types",
                cudf::data_type_error);
   return std::make_unique<column>(
-    type,
-    0,
-    rmm::device_buffer{},
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
-    0);
+    type, 0, rmm::device_buffer{}, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0);
 }
 
 // Empty column of specified type id

@@ -34,9 +34,9 @@ namespace detail {
 
 // logical-and scan of the null mask of the input view
 std::pair<cuda::device_buffer<uint8_t>, size_type> mask_scan(column_view const& input_view,
-                                                   scan_type inclusive,
-                                                   cuda::stream_ref stream,
-                                                   rmm::device_async_resource_ref mr)
+                                                             scan_type inclusive,
+                                                             cuda::stream_ref stream,
+                                                             rmm::device_async_resource_ref mr)
 {
   cuda::device_buffer<uint8_t> mask =
     detail::create_null_mask(input_view.size(), mask_state::UNINITIALIZED, stream, mr);
@@ -55,8 +55,11 @@ std::pair<cuda::device_buffer<uint8_t>, size_type> mask_scan(column_view const& 
   }();
 
   set_null_mask(reinterpret_cast<bitmask_type*>(mask.data()), 0, first_null_position, true, stream);
-  set_null_mask(
-    reinterpret_cast<bitmask_type*>(mask.data()), first_null_position, input_view.size(), false, stream);
+  set_null_mask(reinterpret_cast<bitmask_type*>(mask.data()),
+                first_null_position,
+                input_view.size(),
+                false,
+                stream);
   return {std::move(mask), input_view.size() - first_null_position};
 }
 
@@ -207,8 +210,7 @@ std::unique_ptr<column> scan_inclusive(column_view const& input,
     } else if (input.nullable()) {
       return mask_scan(input, scan_type::INCLUSIVE, stream, mr);
     }
-    return std::make_pair(cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
-                          size_type{0});
+    return std::make_pair(cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), size_type{0});
   }();
 
   auto output = scan_agg_dispatch<scan_dispatcher>(

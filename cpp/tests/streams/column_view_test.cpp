@@ -40,9 +40,10 @@ struct TypedColumnTest : public cudf::test::BaseFixture {
   cudf::size_type _num_elements{distribution(generator)};
   rmm::device_buffer data{};
   cuda::device_buffer<uint8_t> mask = cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED);
-  cuda::device_buffer<uint8_t> all_valid_mask = create_null_mask(
-    num_elements(), cudf::mask_state::ALL_VALID, cudf::test::get_default_stream());
-  cuda::device_buffer<uint8_t> all_null_mask = create_null_mask(num_elements(), cudf::mask_state::ALL_NULL, cudf::test::get_default_stream());
+  cuda::device_buffer<uint8_t> all_valid_mask =
+    create_null_mask(num_elements(), cudf::mask_state::ALL_VALID, cudf::test::get_default_stream());
+  cuda::device_buffer<uint8_t> all_null_mask =
+    create_null_mask(num_elements(), cudf::mask_state::ALL_NULL, cudf::test::get_default_stream());
 };
 
 TYPED_TEST_SUITE(TypedColumnTest, cudf::test::Types<int32_t>);

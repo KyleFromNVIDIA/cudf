@@ -589,12 +589,11 @@ TEST_P(ParquetV2Test, ListOfStruct)
     cudf::test::fixed_width_column_wrapper<int32_t>{0, 2, 5, 5, 6}.release();
   auto num_list_rows = list_offsets_column->size() - 1;
 
-  auto list_col = cudf::make_lists_column(
-    num_list_rows,
-    std::move(list_offsets_column),
-    std::move(struct_2),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
+  auto list_col = cudf::make_lists_column(num_list_rows,
+                                          std::move(list_offsets_column),
+                                          std::move(struct_2),
+                                          0,
+                                          cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto expected = table_view({*list_col});
 

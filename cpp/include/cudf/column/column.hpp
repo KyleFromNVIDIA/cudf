@@ -326,9 +326,9 @@ class column {
   cudf::size_type _size{};                ///< The number of elements in the column
   rmm::device_buffer _data{};             ///< Dense, contiguous, type erased device memory
                                           ///< buffer containing the column elements
-  cuda::device_buffer<uint8_t> _null_mask =
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED);  ///< Bitmask used to represent null values.
-                                                                ///< May be empty if `null_count() == 0`
+  cuda::device_buffer<uint8_t> _null_mask = cudf::create_null_mask(
+    0, cudf::mask_state::UNALLOCATED);               ///< Bitmask used to represent null values.
+                                                     ///< May be empty if `null_count() == 0`
   mutable cudf::size_type _null_count{};             ///< The number of null elements
   std::vector<std::unique_ptr<column>> _children{};  ///< Depending on element type, child
                                                      ///< columns may contain additional data

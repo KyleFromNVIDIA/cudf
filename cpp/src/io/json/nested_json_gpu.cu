@@ -2101,13 +2101,16 @@ std::pair<std::unique_ptr<column>, std::vector<column_name_info>> json_column_to
   // Range of orchestrating/encapsulating function
   CUDF_FUNC_RANGE();
 
-  auto make_validity = [stream, mr](
-                         json_column const& json_col) -> std::pair<cuda::device_buffer<uint8_t>, size_type> {
+  auto make_validity =
+    [stream,
+     mr](json_column const& json_col) -> std::pair<cuda::device_buffer<uint8_t>, size_type> {
     auto const null_count = json_col.current_offset - json_col.valid_count;
-    if (null_count == 0) { return {cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), null_count}; }
+    if (null_count == 0) {
+      return {cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), null_count};
+    }
     auto const data = reinterpret_cast<uint8_t const*>(json_col.validity.data());
-    return {cudf::detail::copy_bitmask(reinterpret_cast<bitmask_type const*>(data),
-                                       0, json_col.current_offset, stream, mr),
+    return {cudf::detail::copy_bitmask(
+              reinterpret_cast<bitmask_type const*>(data), 0, json_col.current_offset, stream, mr),
             null_count};
   };
 
@@ -2220,12 +2223,12 @@ std::pair<std::unique_ptr<column>, std::vector<column_name_info>> json_column_to
 
       rmm::device_uvector<json_column::row_offset_t> d_offsets =
         cudf::detail::make_device_uvector_async(json_col.child_offsets, stream, mr);
-      auto offsets_column = std::make_unique<column>(
-        data_type{type_id::INT32},
-        num_rows,
-        d_offsets.release(),
-        cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
-        0);
+      auto offsets_column =
+        std::make_unique<column>(data_type{type_id::INT32},
+                                 num_rows,
+                                 d_offsets.release(),
+                                 cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
+                                 0);
       // Create children column
       auto [child_column, names] =
         json_col.child_columns.empty()

@@ -195,8 +195,9 @@ std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_and(
  *
  * @param[in] stream CUDA stream used for device memory operations and kernel launches.
  */
-std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_and(
-  table_view const& view, cuda::stream_ref stream, rmm::device_async_resource_ref mr);
+std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_and(table_view const& view,
+                                                               cuda::stream_ref stream,
+                                                               rmm::device_async_resource_ref mr);
 
 /**
  * @copydoc cudf::segmented_bitmask_and
@@ -221,8 +222,9 @@ segmented_bitmask_and(host_span<bitmask_type const* const> masks,
  *
  * @param[in] stream CUDA stream used for device memory operations and kernel launches.
  */
-std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_or(
-  table_view const& view, cuda::stream_ref stream, rmm::device_async_resource_ref mr);
+std::pair<cuda::device_buffer<uint8_t>, size_type> bitmask_or(table_view const& view,
+                                                              cuda::stream_ref stream,
+                                                              rmm::device_async_resource_ref mr);
 
 /**
  * @brief Performs a bitwise AND of the specified bitmasks,

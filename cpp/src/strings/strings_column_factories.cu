@@ -174,7 +174,7 @@ std::vector<std::unique_ptr<column>> make_strings_column_batch(
       chars_data.release(),
       null_count,
       null_count ? std::move(null_masks[idx])
-                 : cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr));
+                           : cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr));
   }
 
   return output;

@@ -974,8 +974,8 @@ std::vector<bitmask_type> bitmask_to_host(cudf::column_view const& c,
       auto mask = copy_bitmask(
         c.null_mask(), c.offset(), c.offset() + c.size(), stream, mr.get_temporary_mr());
       return std::pair<cudf::device_span<bitmask_type const>, cuda::device_buffer<uint8_t>>{
-        cudf::device_span<bitmask_type const>(
-          reinterpret_cast<bitmask_type const*>(mask.data()), num_bitmasks),
+        cudf::device_span<bitmask_type const>(reinterpret_cast<bitmask_type const*>(mask.data()),
+                                              num_bitmasks),
         std::move(mask)};
     }();
     return cudf::detail::make_std_vector(bitmask_span, stream);

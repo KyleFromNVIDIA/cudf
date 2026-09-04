@@ -145,13 +145,8 @@ void column::set_null_mask(cuda::device_buffer<uint8_t> const& new_null_mask,
                  "Column with null values must be nullable and the null mask \
                   buffer size should match the size of the column.");
   }
-  _null_mask = cudf::create_null_mask(
-    this->size(), cudf::mask_state::UNINITIALIZED, stream);
-  CUDF_CUDA_TRY(cudaMemcpyAsync(_null_mask.data(),
-                                 new_null_mask.data(),
-                                 _null_mask.size(),
-                                 cudaMemcpyDeviceToDevice,
-                                 stream.get()));
+  _null_mask =
+    cuda::device_buffer<uint8_t>{stream, cudf::get_current_device_resource_ref(), new_null_mask};
   _null_count = new_null_count;
 }
 

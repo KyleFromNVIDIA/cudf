@@ -296,8 +296,9 @@ std::pair<std::unique_ptr<column>, std::vector<column_name_info>> device_json_co
     CUDF_EXPECTS(json_col.validity.size() >= bitmask_allocation_size_bytes(json_col.num_rows),
                  "valid_count is too small");
   };
-  auto make_validity = [stream, validity_size_check](
-                         device_json_column& json_col) -> std::pair<cuda::device_buffer<uint8_t>, size_type> {
+  auto make_validity =
+    [stream, validity_size_check](
+      device_json_column& json_col) -> std::pair<cuda::device_buffer<uint8_t>, size_type> {
     validity_size_check(json_col);
     auto null_count = cudf::detail::null_count(
       reinterpret_cast<bitmask_type*>(json_col.validity.data()), 0, json_col.num_rows, stream);
@@ -457,11 +458,12 @@ std::pair<std::unique_ptr<column>, std::vector<column_name_info>> device_json_co
 
       // If child is not present, set the null mask correctly, but offsets are zero, and children
       // are empty. Note: json_col modified here, reuse the memory
-      auto offsets_column = std::make_unique<column>(data_type{type_id::INT32},
-                                                     num_rows + 1,
-                                                     json_col.child_offsets.release(),
-                                                     cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
-                                                     0);
+      auto offsets_column =
+        std::make_unique<column>(data_type{type_id::INT32},
+                                 num_rows + 1,
+                                 json_col.child_offsets.release(),
+                                 cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
+                                 0);
       // Create children column
       auto child_schema_element  = get_list_child_schema();
       auto [child_column, names] = [&]() {
@@ -494,7 +496,7 @@ std::pair<std::unique_ptr<column>, std::vector<column_name_info>> device_json_co
         std::move(child_column),
         null_count,
         null_count == 0 ? cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr)
-                        : std::move(result_bitmask));
+                                             : std::move(result_bitmask));
       // Since some rows in child column may need to be nullified due to mixed types, we cannot
       // skip the purge_nonempty_nulls call.
       if (auto const output_cv = ret_col->view();

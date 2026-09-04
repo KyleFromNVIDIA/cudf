@@ -705,12 +705,11 @@ TEST_F(FromArrowHostDeviceTest, FixedSizeListColumnZeroWidth)
   constexpr cudf::size_type num_rows = 3;
   auto offsets  = cudf::test::fixed_width_column_wrapper<int32_t>{0, 0, 0, 0}.release();
   auto child    = cudf::test::fixed_width_column_wrapper<int64_t>{}.release();
-  auto expected = cudf::make_lists_column(
-    num_rows,
-    std::move(offsets),
-    std::move(child),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
+  auto expected = cudf::make_lists_column(num_rows,
+                                          std::move(offsets),
+                                          std::move(child),
+                                          0,
+                                          cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   // nanoarrow's schema builder rejects width zero, but ArrowSchemaView accepts it from a
   // foreign producer. Replace a normally constructed fixed-size-list format to exercise it.

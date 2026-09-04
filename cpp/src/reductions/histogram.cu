@@ -76,13 +76,13 @@ auto gather_histogram(table_view const& input,
   std::vector<std::unique_ptr<column>> struct_children;
   struct_children.emplace_back(std::move(distinct_rows->release().front()));
   struct_children.emplace_back(std::move(distinct_counts));
-  auto output_structs = make_structs_column(
-    static_cast<size_type>(distinct_indices.size()),
-    std::move(struct_children),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
-    stream,
-    mr);
+  auto output_structs =
+    make_structs_column(static_cast<size_type>(distinct_indices.size()),
+                        std::move(struct_children),
+                        0,
+                        cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
+                        stream,
+                        mr);
 
   return std::make_unique<cudf::list_scalar>(
     std::move(*output_structs.release()), true, stream, mr);

@@ -149,13 +149,12 @@ TEST_F(ReductionTDigestMerge, FewHeavyCentroids)
   c0_children.push_back(c0min.release());
   c0_children.push_back(c0max.release());
   // tdigest struct
-  auto c0 = cudf::make_structs_column(
-    1,
-    std::move(c0_children),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
-    stream,
-    setup_mr.get_output_mr());
+  auto c0 = cudf::make_structs_column(1,
+                                      std::move(c0_children),
+                                      0,
+                                      cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
+                                      stream,
+                                      setup_mr.get_output_mr());
   cudf::tdigest::tdigest_column_view tdv0(*c0);
 
   // digest 2
@@ -175,13 +174,12 @@ TEST_F(ReductionTDigestMerge, FewHeavyCentroids)
   c1_children.push_back(c1min.release());
   c1_children.push_back(c1max.release());
   // tdigest struct
-  auto c1 = cudf::make_structs_column(
-    1,
-    std::move(c1_children),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
-    stream,
-    setup_mr.get_output_mr());
+  auto c1 = cudf::make_structs_column(1,
+                                      std::move(c1_children),
+                                      0,
+                                      cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
+                                      stream,
+                                      setup_mr.get_output_mr());
 
   std::vector<cudf::column_view> views;
   views.push_back(*c0);
@@ -203,13 +201,12 @@ TEST_F(ReductionTDigestMerge, FewHeavyCentroids)
     tbl.begin(), tbl.end(), std::back_inserter(cols), [&](cudf::column_view const& col) {
       return std::make_unique<cudf::column>(col, stream, mr.get_output_mr());
     });
-  auto result = cudf::make_structs_column(
-    tbl.num_rows(),
-    std::move(cols),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
-    stream,
-    mr.get_output_mr());
+  auto result = cudf::make_structs_column(tbl.num_rows(),
+                                          std::move(cols),
+                                          0,
+                                          cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
+                                          stream,
+                                          mr.get_output_mr());
 
   // we expect to see exactly 4 centroids (the same inputs) with properly computed min/max.
   cudf::test::fixed_width_column_wrapper<double> ec({1.0, 2.0, 3.0, 4.0}, stream, setup_mr);
@@ -228,13 +225,13 @@ TEST_F(ReductionTDigestMerge, FewHeavyCentroids)
   e_children.push_back(emin.release());
   e_children.push_back(emax.release());
   // tdigest struct
-  auto expected = cudf::make_structs_column(
-    1,
-    std::move(e_children),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
-    stream,
-    setup_mr.get_output_mr());
+  auto expected =
+    cudf::make_structs_column(1,
+                              std::move(e_children),
+                              0,
+                              cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
+                              stream,
+                              setup_mr.get_output_mr());
 
   CUDF_TEST_EXPECT_COLUMNS_EQUAL(
     *result, *expected, cudf::test::debug_output_level::FIRST_ERROR, stream, mr);
