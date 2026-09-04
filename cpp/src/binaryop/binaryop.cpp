@@ -61,7 +61,8 @@ std::pair<cuda::device_buffer<uint8_t>, size_type> scalar_col_valid_mask_and(
   cuda::stream_ref stream,
   rmm::device_async_resource_ref mr)
 {
-  if (col.is_empty()) return std::pair(cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr), 0);
+  if (col.is_empty())
+    return std::pair(cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr), 0);
 
   if (not s.is_valid(stream)) {
     return std::pair(cudf::detail::create_null_mask(col.size(), mask_state::ALL_NULL, stream, mr),
@@ -206,6 +207,13 @@ std::unique_ptr<column> binary_operation(LhsType const& lhs,
                                          cuda::stream_ref stream,
                                          rmm::device_async_resource_ref mr)
 {
+  CUDF_EXPECTS(not cudf::is_dictionary(lhs.type()) and not cudf::is_dictionary(rhs.type()),
+               "Dictionary operands are not supported",
+               cudf::data_type_error);
+  CUDF_EXPECTS(not cudf::is_dictionary(output_type),
+               "Dictionary output type is not supported",
+               cudf::data_type_error);
+
   if constexpr (std::is_same_v<LhsType, column_view> and std::is_same_v<RhsType, column_view>)
     CUDF_EXPECTS(lhs.size() == rhs.size(), "Column sizes don't match", std::invalid_argument);
 

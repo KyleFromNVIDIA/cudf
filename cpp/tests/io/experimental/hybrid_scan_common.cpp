@@ -202,6 +202,7 @@ multisource_device_data fetch_multisource_device_data(
   auto [buffers, per_source_spans, tasks] = cudf::io::parquet::fetch_byte_ranges_to_device_async(
     inputs.datasource_refs,
     cudf::host_span<std::vector<cudf::io::text::byte_range_info> const>{byte_ranges_per_source},
+    cudf::io::parquet::io_submission_policy::SERIALIZE,
     stream,
     mr);
   tasks.get();
@@ -252,7 +253,11 @@ auto filter_row_groups_with_dictionaries_impl(InputType& inputs,
       group_byte_ranges_by_source(dict_pages, inputs.datasources.size());
     [[maybe_unused]] auto [dict_page_buffers, dict_page_data_per_source, task] =
       cudf::io::parquet::fetch_byte_ranges_to_device_async(
-        inputs.datasource_refs, dict_page_ranges_per_source, stream, mr);
+        inputs.datasource_refs,
+        dict_page_ranges_per_source,
+        cudf::io::parquet::io_submission_policy::SERIALIZE,
+        stream,
+        mr);
     task.get();
 
     std::vector<cudf::device_span<uint8_t const>> dict_page_data;
@@ -270,7 +275,11 @@ auto filter_row_groups_with_dictionaries_impl(InputType& inputs,
 
     [[maybe_unused]] auto [dict_page_buffers, dict_page_data, dict_page_tasks] =
       cudf::io::parquet::fetch_byte_ranges_to_device_async(
-        inputs, dict_page_byte_ranges, stream, mr);
+        inputs,
+        dict_page_byte_ranges,
+        cudf::io::parquet::io_submission_policy::SERIALIZE,
+        stream,
+        mr);
     dict_page_tasks.get();
 
     return reader.filter_row_groups_with_dictionary_pages(
@@ -345,13 +354,10 @@ std::pair<std::unique_ptr<cudf::table>, std::vector<char>> create_parquet_with_s
 
     auto const make_null_mask = [stream](auto begin, auto end) {
       auto [null_mask, null_count] = cudf::test::detail::make_null_mask_vector(begin, end);
-      auto d_mask = cudf::create_null_mask(
-        cudf::distance(begin, end), cudf::mask_state::UNINITIALIZED, stream);
-      CUDF_CUDA_TRY(cudaMemcpyAsync(d_mask.data(),
-                                   null_mask.data(),
-                                   d_mask.size(),
-                                   cudaMemcpyHostToDevice,
-                                   stream.get()));
+      auto d_mask =
+        cudf::create_null_mask(cudf::distance(begin, end), cudf::mask_state::UNINITIALIZED, stream);
+      CUDF_CUDA_TRY(cudaMemcpyAsync(
+        d_mask.data(), null_mask.data(), d_mask.size(), cudaMemcpyDefault, stream.get()));
       stream.sync();
       return std::pair{std::move(d_mask), null_count};
     };

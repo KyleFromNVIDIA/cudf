@@ -143,8 +143,7 @@ struct bloom_filter_caster {
       cudf::data_type{cudf::type_id::BOOL8},
       static_cast<cudf::size_type>(total_row_groups),
       std::move(results),
-      cudf::create_null_mask(
-        0, cudf::mask_state::UNALLOCATED, stream),
+      cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream),
       0);
   }
 
@@ -386,7 +385,11 @@ aggregate_reader_metadata::read_bloom_filters(
     });
 
   auto [bloom_filter_buffers, bitset_spans_per_source] =
-    fetch_bloom_filters_to_device(datasource_refs, bloom_filter_byte_ranges_per_source, stream, mr);
+    fetch_bloom_filters_to_device(datasource_refs,
+                                  bloom_filter_byte_ranges_per_source,
+                                  io_submission_policy::INTERLEAVE,
+                                  stream,
+                                  mr);
 
   // Flatten the per-source bitset spans into per-chunk order
   std::vector<cudf::device_span<cuda::std::byte const>> bloom_filter_data;

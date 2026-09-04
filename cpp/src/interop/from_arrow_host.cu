@@ -97,12 +97,16 @@ std::pair<std::unique_ptr<cuda::device_buffer<uint8_t>>, size_type> get_mask_buf
   ArrowArray const* input, cuda::stream_ref stream, rmm::device_async_resource_ref mr)
 {
   if (input->length == 0) {
-    return {std::make_unique<cuda::device_buffer<uint8_t>>(cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr)), 0};
+    return {std::make_unique<cuda::device_buffer<uint8_t>>(
+              cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr)),
+            0};
   }
 
   auto bitmap = static_cast<uint8_t const*>(input->buffers[validity_buffer_idx]);
   if (bitmap == nullptr || input->null_count == 0) {
-    return {std::make_unique<cuda::device_buffer<uint8_t>>(cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr)), 0};
+    return {std::make_unique<cuda::device_buffer<uint8_t>>(
+              cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr)),
+            0};
   }
 
   constexpr auto bits_in_byte = static_cast<int64_t>(size_in_bits<uint8_t>());
@@ -130,9 +134,8 @@ std::pair<std::unique_ptr<cuda::device_buffer<uint8_t>>, size_type> get_mask_buf
     mask_words > 0 ? cudf::detail::count_unset_bits(mask.data(), 0, num_rows, stream) : 0;
 
   auto const mask_bytes = reinterpret_cast<uint8_t const*>(mask.data());
-  return {std::make_unique<cuda::device_buffer<uint8_t>>(
-            cudf::detail::copy_bitmask(reinterpret_cast<bitmask_type const*>(mask_bytes),
-                                       0, num_rows, stream, mr)),
+  return {std::make_unique<cuda::device_buffer<uint8_t>>(cudf::detail::copy_bitmask(
+            reinterpret_cast<bitmask_type const*>(mask_bytes), 0, num_rows, stream, mr)),
           null_count};
 }
 
@@ -230,11 +233,11 @@ std::unique_ptr<column> dispatch_copy_from_arrow_host::operator()<cudf::string_v
     std::overflow_error);
 
   if (input->length == 0) { return make_empty_column(type_id::STRING); }
-  auto [mask, null_count] = !skip_mask
-                              ? get_mask_buffer(input, stream, mr)
-                              : std::pair{std::make_unique<cuda::device_buffer<uint8_t>>(
-                                  cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr)),
-                                          0};
+  auto [mask, null_count] =
+    !skip_mask ? get_mask_buffer(input, stream, mr)
+               : std::pair{std::make_unique<cuda::device_buffer<uint8_t>>(
+                             cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr)),
+                           0};
   return string_column_from_arrow_host(schema, input, std::move(mask), null_count, stream, mr);
 }
 
@@ -290,7 +293,7 @@ std::unique_ptr<column> dispatch_copy_from_arrow_host::operator()<cudf::struct_v
   auto [out_mask, null_count] =
     !skip_mask ? get_mask_buffer(input, stream, mr)
                : std::pair{std::make_unique<cuda::device_buffer<uint8_t>>(
-                   cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr)),
+                             cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr)),
                            0};
 
   return make_structs_column(
@@ -308,7 +311,7 @@ std::unique_ptr<column> dispatch_copy_from_arrow_host::operator()<cudf::struct_v
 std::tuple<std::unique_ptr<column>, int64_t, int64_t> get_fixed_size_list_offsets(
   ArrowSchemaView const* schema,
   ArrowArray const* input,
-  rmm::cuda_stream_view stream,
+  cuda::stream_ref stream,
   rmm::device_async_resource_ref mr)
 {
   auto const layout = get_fixed_size_list_layout(schema, input);
@@ -357,7 +360,7 @@ std::unique_ptr<column> dispatch_copy_from_arrow_host::operator()<cudf::list_vie
   auto [out_mask, null_count] =
     !skip_mask ? get_mask_buffer(input, stream, mr)
                : std::pair{std::make_unique<cuda::device_buffer<uint8_t>>(
-                   cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr)),
+                             cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED, stream, mr)),
                            0};
 
   return make_lists_column(static_cast<size_type>(input->length),
@@ -447,7 +450,7 @@ std::tuple<std::unique_ptr<column>, int64_t, int64_t> copy_offsets_column(
 
 std::unique_ptr<column> make_fixed_size_list_offsets(size_type num_offsets,
                                                      int32_t width,
-                                                     rmm::cuda_stream_view stream,
+                                                     cuda::stream_ref stream,
                                                      rmm::device_async_resource_ref mr)
 {
   auto offsets = make_numeric_column(

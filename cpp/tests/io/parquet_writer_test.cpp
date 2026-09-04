@@ -330,7 +330,9 @@ TEST_F(ParquetWriterTest, Struct)
 
   cudf::io::parquet_reader_options read_args =
     cudf::io::parquet_reader_options::builder(cudf::io::source_info(filepath));
-  cudf::io::read_parquet(read_args);
+  auto const result = cudf::io::read_parquet(read_args);
+
+  CUDF_TEST_EXPECT_TABLES_EQUAL(expected, result.tbl->view());
 }
 
 // custom data sink that supports device writes. uses plain file io.
@@ -639,12 +641,12 @@ TEST_F(ParquetWriterTest, EmptyList)
                                     cudf::make_empty_column(cudf::data_type{cudf::type_id::INT64}),
                                     0,
                                     cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
-  auto L0 = cudf::make_lists_column(
-    3,
-    cudf::test::fixed_width_column_wrapper<int32_t>{0, 0, 0, 0}.release(),
-    std::move(L1),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
+  auto L0 =
+    cudf::make_lists_column(3,
+                            cudf::test::fixed_width_column_wrapper<int32_t>{0, 0, 0, 0}.release(),
+                            std::move(L1),
+                            0,
+                            cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto filepath = temp_env->get_temp_filepath("EmptyList.parquet");
   cudf::io::write_parquet(cudf::io::parquet_writer_options_builder(cudf::io::sink_info(filepath),
@@ -666,18 +668,17 @@ TEST_F(ParquetWriterTest, DeepEmptyList)
                                     cudf::make_empty_column(cudf::data_type{cudf::type_id::INT64}),
                                     0,
                                     cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
-  auto L1 = cudf::make_lists_column(
-    0,
-    cudf::make_empty_column(cudf::data_type(cudf::type_id::INT32)),
-    std::move(L2),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
-  auto L0 = cudf::make_lists_column(
-    3,
-    cudf::test::fixed_width_column_wrapper<int32_t>{0, 0, 0, 0}.release(),
-    std::move(L1),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
+  auto L1 = cudf::make_lists_column(0,
+                                    cudf::make_empty_column(cudf::data_type(cudf::type_id::INT32)),
+                                    std::move(L2),
+                                    0,
+                                    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
+  auto L0 =
+    cudf::make_lists_column(3,
+                            cudf::test::fixed_width_column_wrapper<int32_t>{0, 0, 0, 0}.release(),
+                            std::move(L1),
+                            0,
+                            cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto filepath = temp_env->get_temp_filepath("DeepEmptyList.parquet");
   cudf::io::write_parquet(cudf::io::parquet_writer_options_builder(cudf::io::sink_info(filepath),
@@ -701,18 +702,17 @@ TEST_F(ParquetWriterTest, EmptyListWithStruct)
   children.push_back(std::move(L2));
   auto S2 = cudf::make_structs_column(
     0, std::move(children), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
-  auto L1 = cudf::make_lists_column(
-    0,
-    cudf::make_empty_column(cudf::data_type(cudf::type_id::INT32)),
-    std::move(S2),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
-  auto L0 = cudf::make_lists_column(
-    3,
-    cudf::test::fixed_width_column_wrapper<int32_t>{0, 0, 0, 0}.release(),
-    std::move(L1),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
+  auto L1 = cudf::make_lists_column(0,
+                                    cudf::make_empty_column(cudf::data_type(cudf::type_id::INT32)),
+                                    std::move(S2),
+                                    0,
+                                    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
+  auto L0 =
+    cudf::make_lists_column(3,
+                            cudf::test::fixed_width_column_wrapper<int32_t>{0, 0, 0, 0}.release(),
+                            std::move(L1),
+                            0,
+                            cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto filepath = temp_env->get_temp_filepath("EmptyListWithStruct.parquet");
   cudf::io::write_parquet(cudf::io::parquet_writer_options_builder(cudf::io::sink_info(filepath),
@@ -1436,12 +1436,11 @@ TEST_F(ParquetWriterTest, DictionaryEntryLimitListTest)
       0, [vals_per_row](auto i) { return static_cast<cudf::size_type>(i * vals_per_row); });
     cudf::test::fixed_width_column_wrapper<cudf::size_type> offsets(offset_values,
                                                                     offset_values + num_rows + 1);
-    return cudf::make_lists_column(
-      num_rows,
-      offsets.release(),
-      leaves.release(),
-      0,
-      cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
+    return cudf::make_lists_column(num_rows,
+                                   offsets.release(),
+                                   leaves.release(),
+                                   0,
+                                   cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
   };
 
   constexpr cudf::size_type max_dict_entries = max_dict_size / sizeof(int32_t);
@@ -2566,12 +2565,11 @@ TEST_F(ParquetWriterTest, WriteFixedLenByteArray)
 
   auto data_child = cudf::test::fixed_width_column_wrapper<uint8_t>(data.begin(), data.end());
   auto off_child  = cudf::test::fixed_width_column_wrapper<int32_t>(offsets.begin(), offsets.end());
-  auto col = cudf::make_lists_column(
-    num_rows,
-    off_child.release(),
-    data_child.release(),
-    0,
-    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
+  auto col        = cudf::make_lists_column(num_rows,
+                                     off_child.release(),
+                                     data_child.release(),
+                                     0,
+                                     cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto expected = table_view{{*col, *col, *col, *col}};
   cudf::io::table_input_metadata expected_metadata(expected);
