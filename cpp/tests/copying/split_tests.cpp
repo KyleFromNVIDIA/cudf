@@ -2872,7 +2872,11 @@ TEST_F(ContiguousSplitNestedTypesTest, ListOfDictionary)
     {"aa", "bb", "cc", "dd", "aa", "bb", "cc", "dd", "aa"}, {1, 1, 0, 1, 1, 1, 1, 1, 1}};
   cudf::test::fixed_width_column_wrapper<cudf::size_type> offsets{0, 2, 2, 5, 9};
   auto const list =
-    cudf::make_lists_column(4, offsets.release(), keys.release(), 0, rmm::device_buffer{});
+    cudf::make_lists_column(4,
+                            offsets.release(),
+                            keys.release(),
+                            0,
+                            cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
   split_and_verify_dictionaries(cudf::table_view({*list}), {2}, [](cudf::table_view const& t) {
     return cudf::table_view(
       {cudf::lists_column_view(t.column(0)).get_sliced_child(cudf::get_default_stream())});

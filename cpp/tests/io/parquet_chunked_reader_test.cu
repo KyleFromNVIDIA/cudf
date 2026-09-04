@@ -1441,18 +1441,23 @@ TEST_F(ParquetChunkedReaderInputLimitTest, ListSpanningPagesAtPassEnd)
   auto const make_offsets = [&] { return int32s_col(offsets.begin(), offsets.end()).release(); };
 
   // array<string>
-  auto list_of_string = cudf::make_lists_column(num_rows,
-                                                make_offsets(),
-                                                strings_col(keys.begin(), keys.end()).release(),
-                                                0,
-                                                rmm::device_buffer{});
+  auto list_of_string =
+    cudf::make_lists_column(num_rows,
+                            make_offsets(),
+                            strings_col(keys.begin(), keys.end()).release(),
+                            0,
+                            cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   // map<string, string>, modeled as list<struct<string, string>>
   std::vector<std::unique_ptr<cudf::column>> key_value;
   key_value.emplace_back(strings_col(keys.begin(), keys.end()).release());
   key_value.emplace_back(strings_col(values.begin(), values.end(), value_valid.begin()).release());
-  auto list_of_struct = cudf::make_lists_column(
-    num_rows, make_offsets(), structs_col{std::move(key_value)}.release(), 0, rmm::device_buffer{});
+  auto list_of_struct =
+    cudf::make_lists_column(num_rows,
+                            make_offsets(),
+                            structs_col{std::move(key_value)}.release(),
+                            0,
+                            cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   std::vector<std::unique_ptr<cudf::column>> cols;
   cols.emplace_back(std::move(list_of_string));

@@ -6649,7 +6649,10 @@ TEST_F(ParquetReaderTest, RequiredStringLeafWithSeparatedNullableAncestor)
   std::vector<std::unique_ptr<cudf::column>> inner_children;
   inner_children.push_back(child_col.release());
   auto inner_struct =
-    cudf::create_structs_hierarchy(num_rows, std::move(inner_children), 0, rmm::device_buffer{});
+    cudf::create_structs_hierarchy(num_rows,
+                                   std::move(inner_children),
+                                   0,
+                                   cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   std::vector<std::unique_ptr<cudf::column>> outer_children;
   outer_children.push_back(std::move(inner_struct));
@@ -6711,8 +6714,11 @@ TEST_F(ParquetReaderTest, RequiredStringLeafWithNullableAncestorUnderList)
     0, [](auto i) { return static_cast<cudf::size_type>(i * list_size); });
   column_wrapper<cudf::size_type> offsets_col(offsets, offsets + num_lists + 1);
 
-  auto list_col = cudf::make_lists_column(
-    num_lists, offsets_col.release(), std::move(struct_col), 0, rmm::device_buffer{});
+  auto list_col = cudf::make_lists_column(num_lists,
+                                          offsets_col.release(),
+                                          std::move(struct_col),
+                                          0,
+                                          cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   auto const filepath =
     temp_env->get_temp_filepath("RequiredStringLeafWithNullableAncestorUnderList.parquet");
@@ -6752,8 +6758,12 @@ TEST_F(ParquetReaderTest, RequiredStringLeafWithNullableAncestorUnderList)
   exp_children.push_back(std::move(exp_leaf));
   auto exp_struct = make_optional_struct(std::move(exp_children), num_elements, false);
 
-  auto const expected = cudf::make_lists_column(
-    num_lists, std::move(exp_offsets), std::move(exp_struct), 0, rmm::device_buffer{});
+  auto const expected =
+    cudf::make_lists_column(num_lists,
+                            std::move(exp_offsets),
+                            std::move(exp_struct),
+                            0,
+                            cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   // Read the table from Parquet
   auto const result = cudf::io::read_parquet(

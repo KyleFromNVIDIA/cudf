@@ -355,10 +355,9 @@ std::pair<std::unique_ptr<cudf::table>, std::vector<char>> create_parquet_with_s
 
     auto const make_null_mask = [stream](auto begin, auto end) {
       auto [null_mask, null_count] = cudf::test::detail::make_null_mask_vector(begin, end);
-      auto d_mask =
-        cuda::device_buffer<uint8_t>{stream, cudf::get_current_device_resource_ref(), begin, end};
-      CUDF_CUDA_TRY(cudaMemcpyAsync(
-        d_mask.data(), null_mask.data(), d_mask.size(), cudaMemcpyDefault, stream.get()));
+      auto const* data             = reinterpret_cast<uint8_t const*>(null_mask.data());
+      auto d_mask                  = cuda::device_buffer<uint8_t>{
+        stream, cudf::get_current_device_resource_ref(), data, data + cudf::distance(begin, end)};
       stream.sync();
       return std::pair{std::move(d_mask), null_count};
     };

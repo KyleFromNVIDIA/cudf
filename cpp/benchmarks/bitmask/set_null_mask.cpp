@@ -39,10 +39,11 @@ auto generate_test_data(cudf::size_type num_masks,
 
   auto valids = thrust::host_vector<bool>(num_masks, true);
 
-  std::vector<cuda::device_buffer<uint8_t>> masks(num_masks);
+  std::vector<cuda::device_buffer<uint8_t>> masks;
+  masks.reserve(num_masks);
   std::vector<cudf::bitmask_type*> masks_ptr(num_masks);
   for (cudf::size_type i = 0; i < num_masks; ++i) {
-    masks[i]     = cudf::create_null_mask(mask_size, cudf::mask_state::UNINITIALIZED);
+    masks.push_back(cudf::create_null_mask(mask_size, cudf::mask_state::UNINITIALIZED));
     masks_ptr[i] = reinterpret_cast<cudf::bitmask_type*>(masks[i].data());
   }
 

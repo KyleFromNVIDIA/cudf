@@ -516,7 +516,9 @@ std::unique_ptr<cudf::column> create_random_utf8_string_column(data_profile cons
   auto [result_bitmask, null_count] =
     profile.get_null_probability().has_value()
       ? cudf::bools_to_mask(cudf::device_span<bool const>(null_mask), stream)
-      : std::pair{std::make_unique<rmm::device_buffer>(), 0};
+      : std::pair{std::make_unique<cuda::device_buffer<uint8_t>>(
+                    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED)),
+                  0};
 
   return cudf::make_strings_column(num_rows,
                                    std::move(offsets),
@@ -621,7 +623,9 @@ std::unique_ptr<cudf::column> create_random_column(data_profile const& profile,
   auto [result_bitmask, null_count] =
     profile.get_null_probability().has_value()
       ? cudf::bools_to_mask(cudf::device_span<bool const>(null_mask))
-      : std::pair{std::make_unique<rmm::device_buffer>(), 0};
+      : std::pair{std::make_unique<cuda::device_buffer<uint8_t>>(
+                    cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED)),
+                  0};
 
   return std::make_unique<cudf::column>(
     dtype, num_rows, data.release(), std::move(*result_bitmask.release()), null_count);
@@ -700,7 +704,9 @@ std::unique_ptr<cudf::column> create_random_column<cudf::struct_view>(data_profi
           return cudf::bools_to_mask(cudf::device_span<bool const>(valids),
                                      cudf::get_default_stream());
         }
-        return std::pair{std::make_unique<rmm::device_buffer>(), 0};
+        return std::pair{std::make_unique<cuda::device_buffer<uint8_t>>(
+                           cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED)),
+                         0};
       }();
 
       // Adopt remaining children as evenly as possible
@@ -792,9 +798,12 @@ std::unique_ptr<cudf::column> create_random_column<cudf::list_view>(data_profile
                                      cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
                                      0);
 
-    auto [null_mask, null_count] = profile.get_null_probability().has_value()
-                                     ? cudf::bools_to_mask(cudf::device_span<bool const>(valids))
-                                     : std::pair{std::make_unique<rmm::device_buffer>(), 0};
+    auto [null_mask, null_count] =
+      profile.get_null_probability().has_value()
+        ? cudf::bools_to_mask(cudf::device_span<bool const>(valids))
+        : std::pair{std::make_unique<cuda::device_buffer<uint8_t>>(
+                      cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED)),
+                    0};
 
     list_column = cudf::make_lists_column(current_num_rows,
                                           std::move(offsets_column),
@@ -870,8 +879,12 @@ std::unique_ptr<cudf::column> create_distinct_rows_column<cudf::list_view>(
   auto child_column      = cudf::sequence(num_rows, *zero);
   for (int lvl = dist_params.max_depth; lvl > 0; --lvl) {
     auto offsets_column = cudf::sequence(num_rows + 1, *zero);
-    auto list_column    = cudf::make_lists_column(
-      num_rows, std::move(offsets_column), std::move(child_column), 0, rmm::device_buffer{});
+    auto list_column =
+      cudf::make_lists_column(num_rows,
+                              std::move(offsets_column),
+                              std::move(child_column),
+                              0,
+                              cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
     if (auto const cv = list_column->view();
         cudf::has_nonempty_nulls(cv, cudf::get_default_stream())) {
       list_column = cudf::purge_nonempty_nulls(
@@ -901,8 +914,8 @@ std::unique_ptr<cudf::column> create_distinct_rows_column<cudf::struct_view>(
   children.push_back(cudf::sequence(num_rows, *cudf::make_fixed_width_scalar<int32_t>(0)));
   for (int lvl = dist_params.max_depth; lvl > 1; --lvl) {
     std::vector<std::unique_ptr<cudf::column>> parents;
-    parents.push_back(
-      cudf::create_structs_hierarchy(num_rows, std::move(children), 0, rmm::device_buffer{}));
+    parents.push_back(cudf::create_structs_hierarchy(
+      num_rows, std::move(children), 0, cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED)));
     std::swap(parents, children);
   }
   auto const null_count = col->null_count();
