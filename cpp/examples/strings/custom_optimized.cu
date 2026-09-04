@@ -147,12 +147,11 @@ std::unique_ptr<cudf::column> redact_strings(cudf::column_view const& names,
     std::move(offsets), cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED), 0);
 
   // create column for chars vector (no copy is performed)
-  auto result =
-    cudf::make_strings_column(names.size(),
-                              std::move(offsets_column),
-                              chars.release(),
-                              0,
-                              cudf::create_null_mask(0, cudf::mask_state::UNINITIALIZED));
+  auto result = cudf::make_strings_column(names.size(),
+                                          std::move(offsets_column),
+                                          chars.release(),
+                                          0,
+                                          cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED));
 
   // wait for all of the above to finish
   stream.sync();

@@ -173,7 +173,7 @@ class StreamingChannelMetadataGPU : public ::testing::Test {
       std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::INT32},
                                      static_cast<cudf::size_type>(vals.size()),
                                      std::move(buf),
-                                     cudf::create_null_mask(0, cudf::mask_state::UNINITIALIZED),
+                                     cudf::create_null_mask(0, cudf::mask_state::UNALLOCATED),
                                      0);
     std::vector<std::unique_ptr<cudf::column>> cols;
     cols.push_back(std::move(col));
