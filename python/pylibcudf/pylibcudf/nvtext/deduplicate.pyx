@@ -40,7 +40,7 @@ cdef Column _column_from_suffix_array(
         cpp_null_mask.create_null_mask_unique_ptr(
             0,
             mask_state.UNALLOCATED,
-            stream.view().value(),
+            stream.view().get(),
             mr.get_mr(),
         )
     )
