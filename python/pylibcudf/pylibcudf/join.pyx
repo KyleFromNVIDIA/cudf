@@ -58,7 +58,7 @@ cdef Column _column_from_gather_map(
         cpp_null_mask.create_null_mask_unique_ptr(
             0,
             mask_state.UNALLOCATED,
-            _stream.view().value(),
+            _stream.view().get(),
             mr.get_mr(),
         )
     )
