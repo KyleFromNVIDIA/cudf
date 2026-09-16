@@ -241,8 +241,9 @@ repos:
       - id: numpydoc-validation
         files: ^python/cudf/cudf/
   - repo: https://github.com/rapidsai/pre-commit-hooks
-    rev: v1.6.0
+    rev: v1.7.0
     hooks:
+      - id: verify-dependencies
       - id: verify-copyright
         name: verify-copyright-cudf
         args: [--fix, --spdx]
