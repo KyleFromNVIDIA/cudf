@@ -104,3 +104,5 @@ std::unique_ptr<column> column_nans_to_nulls(column_view const& input,
   CUDF_FUNC_RANGE();
   return detail::column_nans_to_nulls(input, stream, mr);
 }
+
+}  // namespace cudf
