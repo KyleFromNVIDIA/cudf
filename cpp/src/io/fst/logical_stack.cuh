@@ -15,7 +15,9 @@
 #include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
-#include <cub/cub.cuh>
+#include <cub/device/device_radix_sort.cuh>
+#include <cub/device/device_scan.cuh>
+#include <cub/util_type.cuh>
 #include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/std/functional>
