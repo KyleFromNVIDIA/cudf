@@ -239,12 +239,11 @@ cuda::device_buffer<std::uint8_t> decompress_data(
         auto const total_actual_uncomp_size =
           std::accumulate(actual_uncomp_sizes.cbegin(), actual_uncomp_sizes.cend(), 0ul);
         if (total_actual_uncomp_size > uncomp_size) {
-          auto grown_data =
+          decomp_block_data =
             cuda::device_buffer<std::uint8_t>(stream,
                                               cudf::get_current_device_resource_ref(),
                                               total_actual_uncomp_size,
                                               cuda::no_init);
-          decomp_block_data = std::move(grown_data);
           for (size_t i = 0; i < meta.block_list.size(); ++i) {
             meta.block_list[i].offset =
               i > 0 ? (meta.block_list[i - 1].size + meta.block_list[i - 1].offset) : 0;
