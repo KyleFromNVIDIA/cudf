@@ -14,6 +14,7 @@
 #include <cudf/filling.hpp>
 #include <cudf/hashing/detail/murmurhash3_x86_32.cuh>
 #include <cudf/strings/detail/strings_column_factories.cuh>
+#include <cudf/utilities/memory_resource.hpp>
 
 #include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
@@ -472,7 +473,8 @@ static void BM_sv_sort(nvbench::state& state)
     auto comparator             = compare_arrow_sv{d_items.data(), d_chars};
     cub::DeviceMergeSort::SortKeysCopy(
       nullptr, tmp_bytes, in_keys, out_keys, num_rows, comparator, stream.get());
-    auto tmp_stg = rmm::device_buffer(tmp_bytes, stream);
+    auto tmp_stg = cuda::device_buffer<std::byte>{
+      stream, cudf::get_current_device_resource_ref(), tmp_bytes, cuda::no_init};
     state.add_global_memory_reads(num_rows * sizeof(ArrowBinaryView) + data_buffer.size());
     state.exec(nvbench::exec_tag::sync, [&](nvbench::launch& launch) {
       cub::DeviceMergeSort::SortKeysCopy(
@@ -485,7 +487,8 @@ static void BM_sv_sort(nvbench::state& state)
     auto comparator = compare_sv{*d_strings};
     cub::DeviceMergeSort::SortKeysCopy(
       nullptr, tmp_bytes, in_keys, out_keys, num_rows, comparator, stream.get());
-    auto tmp_stg = rmm::device_buffer(tmp_bytes, stream);
+    auto tmp_stg = cuda::device_buffer<std::byte>{
+      stream, cudf::get_current_device_resource_ref(), tmp_bytes, cuda::no_init};
     state.add_global_memory_reads(col_size);
     state.exec(nvbench::exec_tag::sync, [&](nvbench::launch& launch) {
       cub::DeviceMergeSort::SortKeysCopy(
