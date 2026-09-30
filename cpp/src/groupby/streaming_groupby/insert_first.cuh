@@ -60,8 +60,8 @@ size_type streaming_groupby::impl::probe_and_insert_first_batch(
   // NVCC from inlining its expensive template graph into the CUB kernel, reducing build time and
   // binary size.
   using batch_self_eq_t = decltype(batch_self_eq);
-  auto h_batch_self_eq =
-    cudf::detail::make_pinned_vector_async<batch_self_eq_t>(1, batch_self_eq, stream);
+  auto h_batch_self_eq  = cudf::detail::make_empty_pinned_vector<batch_self_eq_t>(1, stream);
+  h_batch_self_eq.push_back(batch_self_eq);
   cuda::device_buffer<batch_self_eq_t> d_batch_self_eq(stream, temp_mr, 1, cuda::no_init);
   auto* const d_batch_self_eq_ptr                                   = d_batch_self_eq.data();
   cudf::host_span<batch_self_eq_t const> const h_batch_self_eq_span = h_batch_self_eq;
