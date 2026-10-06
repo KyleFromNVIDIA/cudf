@@ -313,7 +313,8 @@ std::unique_ptr<cudf::column> gather(strings_column_view const& strings,
       auto env = cuda::std::execution::env{
         cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
         cuda::std::execution::prop{cuda::mr::get_memory_resource_t{}, temp_mr}};
-      cub::DeviceMemcpy::Batched(in_chars_itr, out_chars_itr, sizes_itr, output_count, env);
+      CUDF_CUDA_TRY(
+        cub::DeviceMemcpy::Batched(in_chars_itr, out_chars_itr, sizes_itr, output_count, env));
     }
   }
 
