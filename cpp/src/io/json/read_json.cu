@@ -290,8 +290,8 @@ size_type find_first_delimiter(device_span<char const> d_data,
  * @returns A pair of data source owning buffers together enclosing the bytes read. The second
  * buffer may or may not be empty depending on the condition described above.
  */
-std::pair<datasource::owning_buffer<cuda::device_buffer<uint8_t>>,
-          std::optional<datasource::owning_buffer<cuda::device_buffer<uint8_t>>>>
+std::pair<datasource::owning_buffer<rmm::device_buffer>,
+          std::optional<datasource::owning_buffer<rmm::device_buffer>>>
 get_record_range_raw_input(host_span<std::unique_ptr<datasource>> sources,
                            json_reader_options const& reader_opts,
                            cuda::stream_ref stream)
@@ -314,8 +314,7 @@ get_record_range_raw_input(host_span<std::unique_ptr<datasource>> sources,
   std::size_t buffer_size =
     std::min(total_source_size, chunk_size + num_subchunks_prealloced * size_per_subchunk) +
     num_extra_delimiters;
-  cuda::device_buffer<uint8_t> buffer(
-    stream, cudf::get_current_device_resource_ref(), buffer_size, cuda::no_init);
+  rmm::device_buffer buffer(buffer_size, stream);
   device_span<char> bufspan(reinterpret_cast<char*>(buffer.data()), buffer.size());
 
   // Offset within buffer indicating first read position
@@ -343,9 +342,9 @@ get_record_range_raw_input(host_span<std::unique_ptr<datasource>> sources,
   // entire line until the first delimiter is encountered at the end of the line.
   if (first_delim_pos == -1) {
     // return empty owning datasource buffer
-    auto empty_buf = cuda::device_buffer<uint8_t>(stream, cudf::get_current_device_resource_ref());
-    return std::make_pair(
-      datasource::owning_buffer<cuda::device_buffer<uint8_t>>(std::move(empty_buf)), std::nullopt);
+    auto empty_buf = rmm::device_buffer(0, stream);
+    return std::make_pair(datasource::owning_buffer<rmm::device_buffer>(std::move(empty_buf)),
+                          std::nullopt);
   } else if (!should_load_till_last_source) {
     // Pulled out of the post-loop block below so we can also use it as an upper bound on the
     // reallocate-and-retry buffer growth (see safeguard inside the loop).
@@ -389,11 +388,7 @@ get_record_range_raw_input(host_span<std::unique_ptr<datasource>> sources,
           auto const trailing_bytes = buffer_size - chunk_size - num_extra_delimiters;
           CUDF_EXPECTS(trailing_bytes < batch_size,
                        "A single JSON line cannot be larger than the batch size limit");
-          cuda::device_buffer<uint8_t> new_buffer(
-            stream, cudf::get_current_device_resource_ref(), buffer_size, cuda::no_init);
-          CUDF_CUDA_TRY(
-            cudf::detail::memcpy_async(new_buffer.data(), buffer.data(), buffer.size(), stream));
-          buffer  = std::move(new_buffer);
+          buffer.resize(buffer_size, stream);
           bufspan = device_span<char>(reinterpret_cast<char*>(buffer.data()), buffer.size());
         }
       }
@@ -411,7 +406,7 @@ get_record_range_raw_input(host_span<std::unique_ptr<datasource>> sources,
         batch_size) {
       auto buffer_data = buffer.data();
       return std::make_pair(
-        datasource::owning_buffer<cuda::device_buffer<uint8_t>>(
+        datasource::owning_buffer<rmm::device_buffer>(
           std::move(buffer),
           reinterpret_cast<uint8_t*>(buffer_data) + first_delim_pos + shift_for_nonzero_offset,
           next_delim_pos - first_delim_pos - shift_for_nonzero_offset + 1),
@@ -435,26 +430,23 @@ get_record_range_raw_input(host_span<std::unique_ptr<datasource>> sources,
     CUDF_EXPECTS(last_line_size < batch_size,
                  "A single JSON line cannot be larger than the batch size limit");
 
-    auto const second_begin = reinterpret_cast<uint8_t const*>(
+    rmm::device_buffer second_buffer(
       bufsubspan.data() +
-      static_cast<std::size_t>(cuda::std::distance(second_last_delimiter_it, rev_it_end)));
-    cuda::device_buffer<uint8_t> second_buffer(stream,
-                                               cudf::get_current_device_resource_ref(),
-                                               second_begin,
-                                               second_begin + last_line_size + 1);
+        static_cast<std::size_t>(cuda::std::distance(second_last_delimiter_it, rev_it_end)),
+      last_line_size + 1,
+      stream);
 
     auto buffer_data        = buffer.data();
     auto second_buffer_data = second_buffer.data();
     auto second_buffer_size = second_buffer.size();
     return std::make_pair(
-      datasource::owning_buffer<cuda::device_buffer<uint8_t>>(
+      datasource::owning_buffer<rmm::device_buffer>(
         std::move(buffer),
         reinterpret_cast<uint8_t*>(buffer_data) + first_delim_pos + shift_for_nonzero_offset,
         next_delim_pos - first_delim_pos - shift_for_nonzero_offset - last_line_size),
-      datasource::owning_buffer<cuda::device_buffer<uint8_t>>(
-        std::move(second_buffer),
-        reinterpret_cast<uint8_t*>(second_buffer_data),
-        second_buffer_size));
+      datasource::owning_buffer<rmm::device_buffer>(std::move(second_buffer),
+                                                    reinterpret_cast<uint8_t*>(second_buffer_data),
+                                                    second_buffer_size));
   }
 
   // Add delimiter to end of buffer - possibly adding an empty line to the input buffer - iff we are
@@ -469,7 +461,7 @@ get_record_range_raw_input(host_span<std::unique_ptr<datasource>> sources,
 
   auto buffer_data = buffer.data();
   return std::make_pair(
-    datasource::owning_buffer<cuda::device_buffer<uint8_t>>(
+    datasource::owning_buffer<rmm::device_buffer>(
       std::move(buffer),
       reinterpret_cast<uint8_t*>(buffer_data) + first_delim_pos + shift_for_nonzero_offset,
       num_chars),
