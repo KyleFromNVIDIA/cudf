@@ -16,12 +16,11 @@
 #include <rmm/exec_policy.hpp>
 
 #include <cub/device/device_reduce.cuh>
-#include <cuda/buffer>
+#include <cuda/std/execution>
 #include <cuda/std/iterator>
 #include <cuda/stream>
 #include <thrust/for_each.h>
 
-#include <cstddef>
 #include <optional>
 
 namespace cudf {
@@ -58,29 +57,11 @@ std::unique_ptr<scalar> reduce(InputIterator d_in,
   using ScalarType         = cudf::scalar_type_t<OutputType>;
   auto result              = std::make_unique<ScalarType>(initial_value, true, stream, mr);
 
-  // Allocate temporary storage
-  cuda::device_buffer<std::byte> d_temp_storage{stream, cudf::get_current_device_resource_ref()};
-  size_t temp_storage_bytes = 0;
-  cub::DeviceReduce::Reduce(d_temp_storage.data(),
-                            temp_storage_bytes,
-                            d_in,
-                            result->data(),
-                            num_items,
-                            binary_op,
-                            initial_value,
-                            stream.get());
-  d_temp_storage = cuda::device_buffer<std::byte>{
-    stream, cudf::get_current_device_resource_ref(), temp_storage_bytes, cuda::no_init};
-
-  // Run reduction
-  cub::DeviceReduce::Reduce(d_temp_storage.data(),
-                            temp_storage_bytes,
-                            d_in,
-                            result->data(),
-                            num_items,
-                            binary_op,
-                            initial_value,
-                            stream.get());
+  auto env = cuda::std::execution::env{
+    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
+    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                               cudf::get_current_device_resource_ref()}};
+  cub::DeviceReduce::Reduce(d_in, result->data(), num_items, binary_op, initial_value, env);
   return result;
 }
 
@@ -117,29 +98,11 @@ std::unique_ptr<scalar> reduce(InputIterator d_in,
   auto dev_result          = cudf::detail::device_scalar<OutputType>{
     initial_value, stream, cudf::get_current_device_resource_ref()};
 
-  // Allocate temporary storage
-  cuda::device_buffer<std::byte> d_temp_storage{stream, cudf::get_current_device_resource_ref()};
-  size_t temp_storage_bytes = 0;
-  cub::DeviceReduce::Reduce(d_temp_storage.data(),
-                            temp_storage_bytes,
-                            d_in,
-                            dev_result.data(),
-                            num_items,
-                            binary_op,
-                            initial_value,
-                            stream.get());
-  d_temp_storage = cuda::device_buffer<std::byte>{
-    stream, cudf::get_current_device_resource_ref(), temp_storage_bytes, cuda::no_init};
-
-  // Run reduction
-  cub::DeviceReduce::Reduce(d_temp_storage.data(),
-                            temp_storage_bytes,
-                            d_in,
-                            dev_result.data(),
-                            num_items,
-                            binary_op,
-                            initial_value,
-                            stream.get());
+  auto env = cuda::std::execution::env{
+    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
+    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                               cudf::get_current_device_resource_ref()}};
+  cub::DeviceReduce::Reduce(d_in, dev_result.data(), num_items, binary_op, initial_value, env);
 
   return std::make_unique<cudf::string_scalar>(dev_result.value(stream), true, stream, mr);
 }
@@ -182,29 +145,12 @@ std::unique_ptr<scalar> reduce(InputIterator d_in,
   cudf::detail::device_scalar<IntermediateType> intermediate_result{
     initial_value, stream, cudf::get_current_device_resource_ref()};
 
-  // Allocate temporary storage
-  cuda::device_buffer<std::byte> d_temp_storage{stream, cudf::get_current_device_resource_ref()};
-  size_t temp_storage_bytes = 0;
-  cub::DeviceReduce::Reduce(d_temp_storage.data(),
-                            temp_storage_bytes,
-                            d_in,
-                            intermediate_result.data(),
-                            num_items,
-                            binary_op,
-                            initial_value,
-                            stream.get());
-  d_temp_storage = cuda::device_buffer<std::byte>{
-    stream, cudf::get_current_device_resource_ref(), temp_storage_bytes, cuda::no_init};
-
-  // Run reduction
-  cub::DeviceReduce::Reduce(d_temp_storage.data(),
-                            temp_storage_bytes,
-                            d_in,
-                            intermediate_result.data(),
-                            num_items,
-                            binary_op,
-                            initial_value,
-                            stream.get());
+  auto env = cuda::std::execution::env{
+    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
+    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                               cudf::get_current_device_resource_ref()}};
+  cub::DeviceReduce::Reduce(
+    d_in, intermediate_result.data(), num_items, binary_op, initial_value, env);
 
   // compute the result value from intermediate value in device
   using ScalarType = cudf::scalar_type_t<OutputType>;

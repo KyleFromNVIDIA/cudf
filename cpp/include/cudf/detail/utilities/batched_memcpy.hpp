@@ -9,8 +9,8 @@
 #include <cudf/utilities/memory_resource.hpp>
 
 #include <cub/device/device_memcpy.cuh>
-#include <cuda/buffer>
 #include <cuda/functional>
+#include <cuda/std/execution>
 #include <cuda/stream>
 
 #include <cstddef>
@@ -39,20 +39,11 @@ void batched_memcpy_async(SrcIterator src_iter,
                           size_t num_buffs,
                           cuda::stream_ref stream)
 {
-  size_t temp_storage_bytes = 0;
-  cub::DeviceMemcpy::Batched(
-    nullptr, temp_storage_bytes, src_iter, dst_iter, size_iter, num_buffs, stream.get());
-
-  cuda::device_buffer<std::byte> d_temp_storage{
-    stream, cudf::get_current_device_resource_ref(), temp_storage_bytes, cuda::no_init};
-
-  cub::DeviceMemcpy::Batched(d_temp_storage.data(),
-                             temp_storage_bytes,
-                             src_iter,
-                             dst_iter,
-                             size_iter,
-                             num_buffs,
-                             stream.get());
+  auto env = cuda::std::execution::env{
+    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
+    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                               cudf::get_current_device_resource_ref()}};
+  cub::DeviceMemcpy::Batched(src_iter, dst_iter, size_iter, num_buffs, env);
 }
 
 }  // namespace detail
