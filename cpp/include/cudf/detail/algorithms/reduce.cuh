@@ -16,8 +16,6 @@
 #include <cuda/std/functional>
 #include <cuda/stream>
 
-#include <cstddef>
-
 namespace cudf::detail {
 
 /**

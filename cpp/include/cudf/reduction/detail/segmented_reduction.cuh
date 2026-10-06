@@ -18,8 +18,6 @@
 #include <cuda/stream>
 #include <thrust/transform.h>
 
-#include <cstddef>
-
 namespace cudf {
 namespace reduction {
 namespace detail {

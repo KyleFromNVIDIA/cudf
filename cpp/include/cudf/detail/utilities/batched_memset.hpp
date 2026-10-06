@@ -18,8 +18,6 @@
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/transform.h>
 
-#include <cstddef>
-
 namespace CUDF_EXPORT cudf {
 namespace detail {
 

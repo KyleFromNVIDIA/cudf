@@ -13,8 +13,6 @@
 #include <cuda/std/execution>
 #include <cuda/stream>
 
-#include <cstddef>
-
 namespace CUDF_EXPORT cudf {
 namespace detail {
 

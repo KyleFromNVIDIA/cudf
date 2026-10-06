@@ -17,8 +17,6 @@
 #include <cuda/stream>
 #include <thrust/copy.h>
 
-#include <cstddef>
-
 namespace cudf::detail {
 
 /**

@@ -33,7 +33,6 @@
 #include <thrust/transform.h>
 
 #include <algorithm>
-#include <cstddef>
 #include <iterator>
 #include <optional>
 #include <vector>
