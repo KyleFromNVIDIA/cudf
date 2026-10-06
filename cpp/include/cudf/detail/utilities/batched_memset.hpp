@@ -10,14 +10,15 @@
 #include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_buffer.hpp>
-
 #include <cub/device/device_copy.cuh>
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/stream>
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/transform.h>
+
+#include <cstddef>
 
 namespace CUDF_EXPORT cudf {
 namespace detail {
@@ -63,8 +64,8 @@ void batched_memset(cudf::host_span<cudf::device_span<T> const> host_buffers,
     nullptr, temp_storage_bytes, iter_in, iter_out, sizes, num_buffers, stream.get());
 
   // Allocate temporary storage
-  rmm::device_buffer d_temp_storage(
-    temp_storage_bytes, stream, cudf::get_current_device_resource_ref());
+  cuda::device_buffer<std::byte> d_temp_storage(
+    stream, cudf::get_current_device_resource_ref(), temp_storage_bytes, cuda::no_init);
 
   cub::DeviceCopy::Batched(
     d_temp_storage.data(), temp_storage_bytes, iter_in, iter_out, sizes, num_buffers, stream.get());

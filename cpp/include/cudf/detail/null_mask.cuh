@@ -23,6 +23,7 @@
 #include <cub/device/device_segmented_reduce.cuh>
 #include <cuda/atomic>
 #include <cuda/bit>
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/std/tuple>
@@ -31,6 +32,7 @@
 #include <thrust/transform.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <iterator>
 #include <optional>
 #include <vector>
@@ -579,7 +581,8 @@ rmm::device_uvector<size_type> segmented_count_bits(bitmask_type const* bitmask,
                                                 first_word_indices,
                                                 last_word_indices,
                                                 stream.get()));
-  rmm::device_buffer d_temp_storage(temp_storage_bytes, stream);
+  cuda::device_buffer<std::byte> d_temp_storage(
+    stream, cudf::get_current_device_resource_ref(), temp_storage_bytes, cuda::no_init);
 
   // Perform segmented reduction.
   CUDF_CUDA_TRY(cub::DeviceSegmentedReduce::Sum(d_temp_storage.data(),

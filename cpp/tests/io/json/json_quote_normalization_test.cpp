@@ -14,7 +14,7 @@
 #include <cudf/io/json.hpp>
 #include <cudf/io/types.hpp>
 
-#include <rmm/device_buffer.hpp>
+#include <cuda/buffer>
 
 #include <string>
 
@@ -26,11 +26,16 @@ void run_test(std::string const& host_input,
               char delimiter = '\n')
 {
   auto stream_view  = cudf::test::get_default_stream();
-  auto device_input = rmm::device_buffer(host_input.c_str(), host_input.size(), stream_view);
+  auto device_input = cuda::device_buffer<uint8_t>(
+    stream_view,
+    cudf::get_current_device_resource_ref(),
+    reinterpret_cast<uint8_t const*>(host_input.data()),
+    reinterpret_cast<uint8_t const*>(host_input.data()) + host_input.size());
   stream_view.sync();
 
   // Preprocessing FST
-  cudf::io::datasource::owning_buffer<rmm::device_buffer> device_data(std::move(device_input));
+  cudf::io::datasource::owning_buffer<cuda::device_buffer<uint8_t>> device_data(
+    std::move(device_input));
   cudf::io::json::detail::normalize_single_quotes(
     device_data, delimiter, stream_view, cudf::get_current_device_resource_ref());
 

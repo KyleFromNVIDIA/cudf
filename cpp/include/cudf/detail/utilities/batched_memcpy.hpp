@@ -8,11 +8,12 @@
 #include <cudf/detail/iterator.cuh>
 #include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_buffer.hpp>
-
 #include <cub/device/device_memcpy.cuh>
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/stream>
+
+#include <cstddef>
 
 namespace CUDF_EXPORT cudf {
 namespace detail {
@@ -42,7 +43,8 @@ void batched_memcpy_async(SrcIterator src_iter,
   cub::DeviceMemcpy::Batched(
     nullptr, temp_storage_bytes, src_iter, dst_iter, size_iter, num_buffs, stream.get());
 
-  rmm::device_buffer d_temp_storage{temp_storage_bytes, stream.get()};
+  cuda::device_buffer<std::byte> d_temp_storage{
+    stream, cudf::get_current_device_resource_ref(), temp_storage_bytes, cuda::no_init};
 
   cub::DeviceMemcpy::Batched(d_temp_storage.data(),
                              temp_storage_bytes,

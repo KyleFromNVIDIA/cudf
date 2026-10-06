@@ -294,7 +294,7 @@ struct TransduceToNormalizedWS {
 
 namespace detail {
 
-void normalize_single_quotes(datasource::owning_buffer<rmm::device_buffer>& indata,
+void normalize_single_quotes(datasource::owning_buffer<cuda::device_buffer<uint8_t>>& indata,
                              char delimiter,
                              cuda::stream_ref stream,
                              rmm::device_async_resource_ref mr)
@@ -309,18 +309,19 @@ void normalize_single_quotes(datasource::owning_buffer<rmm::device_buffer>& inda
       normalize_quotes::TransduceToNormalizedQuotes{}),
     stream);
 
-  rmm::device_buffer outbuf(indata.size() * 2, stream, mr);
+  cuda::device_buffer<uint8_t> outbuf(stream, mr, indata.size() * 2, cuda::no_init);
   cudf::detail::device_scalar<SymbolOffsetT> outbuf_size(stream, mr);
   parser.Transduce(reinterpret_cast<SymbolT const*>(indata.data()),
                    static_cast<SymbolOffsetT>(indata.size()),
-                   static_cast<SymbolT*>(outbuf.data()),
+                   reinterpret_cast<SymbolT*>(outbuf.data()),
                    cuda::make_discard_iterator(),
                    outbuf_size.data(),
                    normalize_quotes::start_state,
                    stream);
 
-  outbuf.resize(outbuf_size.value(stream), stream);
-  datasource::owning_buffer<rmm::device_buffer> outdata(std::move(outbuf));
+  auto const size = outbuf_size.value(stream);
+  auto const data = outbuf.data();
+  datasource::owning_buffer<cuda::device_buffer<uint8_t>> outdata(std::move(outbuf), data, size);
   std::swap(indata, outdata);
 }
 

@@ -8,14 +8,16 @@
 #include <cudf/utilities/error.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_buffer.hpp>
 #include <rmm/exec_policy.hpp>
 
 #include <cub/device/device_select.cuh>
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/std/functional>
 #include <cuda/stream>
 #include <thrust/copy.h>
+
+#include <cstddef>
 
 namespace cudf::detail {
 
@@ -66,8 +68,8 @@ OutputIterator copy_if(InputIterator begin,
                                              predicate,
                                              stream.get()));
 
-  auto d_temp_storage =
-    rmm::device_buffer(temp_storage_bytes, stream, cudf::get_current_device_resource_ref());
+  auto d_temp_storage = cuda::device_buffer<std::byte>(
+    stream, cudf::get_current_device_resource_ref(), temp_storage_bytes, cuda::no_init);
 
   CUDF_CUDA_TRY(cub::DeviceSelect::FlaggedIf(d_temp_storage.data(),
                                              temp_storage_bytes,
@@ -125,8 +127,8 @@ OutputIterator copy_if(InputIterator begin,
                                       stream.get()));
 
   // Allocate temporary storage
-  rmm::device_buffer d_temp_storage(
-    temp_storage_bytes, stream, cudf::get_current_device_resource_ref());
+  cuda::device_buffer<std::byte> d_temp_storage(
+    stream, cudf::get_current_device_resource_ref(), temp_storage_bytes, cuda::no_init);
 
   // Run copy_if
   CUDF_CUDA_TRY(cub::DeviceSelect::If(d_temp_storage.data(),
@@ -163,7 +165,8 @@ void copy_if_async(InputIterator begin,
   CUDF_CUDA_TRY(cub::DeviceSelect::If(
     nullptr, tmp_bytes, begin, output, no_out, num_items, predicate, stream.get()));
 
-  auto tmp_stg = rmm::device_buffer(tmp_bytes, stream, cudf::get_current_device_resource_ref());
+  auto tmp_stg = cuda::device_buffer<std::byte>(
+    stream, cudf::get_current_device_resource_ref(), tmp_bytes, cuda::no_init);
   CUDF_CUDA_TRY(cub::DeviceSelect::If(
     tmp_stg.data(), tmp_bytes, begin, output, no_out, num_items, predicate, stream.get()));
 }
@@ -193,7 +196,8 @@ void copy_if_async(InputIterator begin,
   CUDF_CUDA_TRY(cub::DeviceSelect::FlaggedIf(
     nullptr, tmp_bytes, begin, stencil, result, no_out, num_items, predicate, stream.get()));
 
-  auto tmp = rmm::device_buffer(tmp_bytes, stream, cudf::get_current_device_resource_ref());
+  auto tmp = cuda::device_buffer<std::byte>(
+    stream, cudf::get_current_device_resource_ref(), tmp_bytes, cuda::no_init);
   CUDF_CUDA_TRY(cub::DeviceSelect::FlaggedIf(
     tmp.data(), tmp_bytes, begin, stencil, result, no_out, num_items, predicate, stream.get()));
 }

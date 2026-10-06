@@ -22,11 +22,13 @@
 #include <rmm/exec_policy.hpp>
 
 #include <cub/device/device_memcpy.cuh>
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/stream>
 #include <thrust/for_each.h>
 
+#include <cstddef>
 #include <stdexcept>
 
 namespace cudf {
@@ -107,7 +109,8 @@ rmm::device_uvector<char> make_chars_buffer(column_view const& offsets,
   size_t temp_storage_bytes = 0;
   CUDF_CUDA_TRY(cub::DeviceMemcpy::Batched(
     nullptr, temp_storage_bytes, src_ptrs, dst_ptrs, src_sizes, strings_count, stream.get()));
-  rmm::device_buffer d_temp_storage(temp_storage_bytes, stream);
+  cuda::device_buffer<std::byte> d_temp_storage(
+    stream, cudf::get_current_device_resource_ref(), temp_storage_bytes, cuda::no_init);
   CUDF_CUDA_TRY(cub::DeviceMemcpy::Batched(d_temp_storage.data(),
                                            temp_storage_bytes,
                                            src_ptrs,

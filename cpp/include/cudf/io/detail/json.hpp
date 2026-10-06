@@ -10,6 +10,7 @@
 #include <cudf/utilities/export.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
+#include <cuda/buffer>
 #include <cuda/stream>
 
 namespace CUDF_EXPORT cudf {
@@ -82,7 +83,7 @@ void write_json(data_sink* sink,
  * @param stream    CUDA stream used for device memory operations and kernel launches
  * @param mr        Device memory resource to use for device memory allocation
  */
-void normalize_single_quotes(datasource::owning_buffer<rmm::device_buffer>& indata,
+void normalize_single_quotes(datasource::owning_buffer<cuda::device_buffer<uint8_t>>& indata,
                              char delimiter,
                              cuda::stream_ref stream,
                              rmm::device_async_resource_ref mr);

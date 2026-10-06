@@ -18,10 +18,10 @@
 #include <cudf/utilities/memory_resource.hpp>
 #include <cudf/utilities/prefetch.hpp>
 
-#include <rmm/device_buffer.hpp>
 #include <rmm/exec_policy.hpp>
 
 #include <cub/device/device_memcpy.cuh>
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/std/iterator>
@@ -321,7 +321,8 @@ std::unique_ptr<cudf::column> gather(strings_column_view const& strings,
                                  stream.get());
 
       // Allocate temporary storage
-      auto d_temp_storage = rmm::device_buffer(temp_storage_bytes, stream, temp_mr);
+      auto d_temp_storage =
+        cuda::device_buffer<std::byte>(stream, temp_mr, temp_storage_bytes, cuda::no_init);
 
       // Run batched copy algorithm
       cub::DeviceMemcpy::Batched(d_temp_storage.data(),
