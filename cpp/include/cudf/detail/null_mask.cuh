@@ -571,10 +571,10 @@ rmm::device_uvector<size_type> segmented_count_bits(bitmask_type const* bitmask,
   auto last_word_indices =
     cuda::transform_iterator(last_bit_indices_begin, bit_to_word_index{false});
 
-  auto env = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
   CUDF_CUDA_TRY(cub::DeviceSegmentedReduce::Sum(num_set_bits_in_word,
                                                 d_bit_counts.begin(),
                                                 num_ranges,

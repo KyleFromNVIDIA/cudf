@@ -10,6 +10,7 @@
 #include <cudf/column/column_factories.hpp>
 #include <cudf/detail/device_scalar.hpp>
 #include <cudf/detail/utilities/cast_functor.cuh>
+#include <cudf/utilities/error.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 #include <cudf/utilities/type_dispatcher.hpp>
 
@@ -57,11 +58,12 @@ std::unique_ptr<scalar> reduce(InputIterator d_in,
   using ScalarType         = cudf::scalar_type_t<OutputType>;
   auto result              = std::make_unique<ScalarType>(initial_value, true, stream, mr);
 
-  auto env = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
-  cub::DeviceReduce::Reduce(d_in, result->data(), num_items, binary_op, initial_value, env);
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
+  CUDF_CUDA_TRY(
+    cub::DeviceReduce::Reduce(d_in, result->data(), num_items, binary_op, initial_value, env));
   return result;
 }
 
@@ -98,11 +100,12 @@ std::unique_ptr<scalar> reduce(InputIterator d_in,
   auto dev_result          = cudf::detail::device_scalar<OutputType>{
     initial_value, stream, cudf::get_current_device_resource_ref()};
 
-  auto env = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
-  cub::DeviceReduce::Reduce(d_in, dev_result.data(), num_items, binary_op, initial_value, env);
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
+  CUDF_CUDA_TRY(
+    cub::DeviceReduce::Reduce(d_in, dev_result.data(), num_items, binary_op, initial_value, env));
 
   return std::make_unique<cudf::string_scalar>(dev_result.value(stream), true, stream, mr);
 }
@@ -145,12 +148,12 @@ std::unique_ptr<scalar> reduce(InputIterator d_in,
   cudf::detail::device_scalar<IntermediateType> intermediate_result{
     initial_value, stream, cudf::get_current_device_resource_ref()};
 
-  auto env = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
-  cub::DeviceReduce::Reduce(
-    d_in, intermediate_result.data(), num_items, binary_op, initial_value, env);
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
+  CUDF_CUDA_TRY(cub::DeviceReduce::Reduce(
+    d_in, intermediate_result.data(), num_items, binary_op, initial_value, env));
 
   // compute the result value from intermediate value in device
   using ScalarType = cudf::scalar_type_t<OutputType>;

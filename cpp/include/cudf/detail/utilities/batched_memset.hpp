@@ -8,6 +8,7 @@
 #include <cudf/detail/iterator.cuh>
 #include <cudf/detail/nvtx/ranges.hpp>
 #include <cudf/detail/utilities/vector_factories.hpp>
+#include <cudf/utilities/error.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
 #include <cub/device/device_copy.cuh>
@@ -56,11 +57,11 @@ void batched_memset(cudf::host_span<cudf::device_span<T> const> host_buffers,
     cuda::proclaim_return_type<T*>([] __device__(auto const& buffer) { return buffer.data(); }));
 
   auto const num_buffers = host_buffers.size();
-  auto env               = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
-  cub::DeviceCopy::Batched(iter_in, iter_out, sizes, num_buffers, env);
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
+  CUDF_CUDA_TRY(cub::DeviceCopy::Batched(iter_in, iter_out, sizes, num_buffers, env));
 }
 
 }  // namespace detail

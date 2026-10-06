@@ -105,10 +105,10 @@ rmm::device_uvector<char> make_chars_buffer(column_view const& offsets,
     cuda::proclaim_return_type<char*>(
       [output = chars_data.data()] __device__(auto offset) { return output + offset; }));
 
-  auto env = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
   CUDF_CUDA_TRY(cub::DeviceMemcpy::Batched(src_ptrs, dst_ptrs, src_sizes, strings_count, env));
 
   return chars_data;

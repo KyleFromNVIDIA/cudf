@@ -48,10 +48,10 @@ OutputType reduce(
     cudf::detail::device_scalar<OutputType>(stream, cudf::get_current_device_resource_ref());
 
   // Build environment with stream and memory resource for cub::DeviceReduce::Reduce
-  auto env = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
   CUDF_CUDA_TRY(cub::DeviceReduce::Reduce(begin, result.data(), num_items, binary_op, init, env));
 
   // Copy result back to host via pinned memory
@@ -102,10 +102,10 @@ cuda::std::pair<KeysOutputIterator, ValuesOutputIterator> reduce_by_key(
   auto d_num_runs =
     cudf::detail::device_scalar<cuda::std::size_t>(stream, cudf::get_current_device_resource_ref());
 
-  auto env = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
   CUDF_CUDA_TRY(cub::DeviceReduce::ReduceByKey(
     keys_begin, keys_output, values_begin, values_output, d_num_runs.data(), op, num_items, env));
 
@@ -138,10 +138,10 @@ void reduce_by_key_async(KeysInputIterator keys_begin,
 {
   auto const num_items = cuda::std::distance(keys_begin, keys_end);
 
-  auto env = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
   CUDF_CUDA_TRY(cub::DeviceReduce::ReduceByKey(keys_begin,
                                                keys_output,
                                                values_begin,
@@ -190,10 +190,10 @@ OutputType transform_reduce(InputIterator begin,
   auto result =
     cudf::detail::device_scalar<OutputType>(stream, cudf::get_current_device_resource_ref());
 
-  auto env = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
   CUDF_CUDA_TRY(cub::DeviceReduce::TransformReduce(
     begin, result.data(), num_items, reduce_op, transform_op, init, env));
 

@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cudf/detail/iterator.cuh>
+#include <cudf/utilities/error.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
 #include <cub/device/device_memcpy.cuh>
@@ -37,11 +38,11 @@ void batched_memcpy_async(SrcIterator src_iter,
                           size_t num_buffs,
                           cuda::stream_ref stream)
 {
-  auto env = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
-  cub::DeviceMemcpy::Batched(src_iter, dst_iter, size_iter, num_buffs, env);
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
+  CUDF_CUDA_TRY(cub::DeviceMemcpy::Batched(src_iter, dst_iter, size_iter, num_buffs, env));
 }
 
 }  // namespace detail

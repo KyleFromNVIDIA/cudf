@@ -55,10 +55,10 @@ OutputIterator copy_if(InputIterator begin,
   auto num_selected =
     cudf::detail::device_scalar<cuda::std::size_t>(stream, cudf::get_current_device_resource_ref());
 
-  auto env = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
   CUDF_CUDA_TRY(cub::DeviceSelect::FlaggedIf(
     begin, stencil, result, num_selected.data(), num_items, predicate, env));
 
@@ -96,10 +96,10 @@ OutputIterator copy_if(InputIterator begin,
   auto num_selected =
     cudf::detail::device_scalar<cuda::std::size_t>(stream, cudf::get_current_device_resource_ref());
 
-  auto env = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
   CUDF_CUDA_TRY(
     cub::DeviceSelect::If(begin, output, num_selected.data(), num_items, predicate, env));
 
@@ -124,10 +124,10 @@ void copy_if_async(InputIterator begin,
   auto const num_items = cuda::std::distance(begin, end);
 
   auto no_out = cuda::make_discard_iterator<int>();
-  auto env    = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
   CUDF_CUDA_TRY(cub::DeviceSelect::If(begin, output, no_out, num_items, predicate, env));
 }
 
@@ -152,10 +152,10 @@ void copy_if_async(InputIterator begin,
   auto const num_items = cuda::std::distance(begin, end);
 
   auto no_out = cuda::make_discard_iterator<int>();
-  auto env    = cuda::std::execution::env{
-    cuda::std::execution::prop{cuda::get_stream_t{}, cuda::stream_ref{stream.get()}},
-    cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
-                               cudf::get_current_device_resource_ref()}};
+  auto env =
+    cuda::std::execution::env{cuda::std::execution::prop{cuda::get_stream_t{}, stream},
+                              cuda::std::execution::prop{cuda::mr::get_memory_resource_t{},
+                                                         cudf::get_current_device_resource_ref()}};
   CUDF_CUDA_TRY(
     cub::DeviceSelect::FlaggedIf(begin, stencil, result, no_out, num_items, predicate, env));
 }
