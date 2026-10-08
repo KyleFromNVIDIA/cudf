@@ -16,11 +16,12 @@
 #include <cudf/types.hpp>
 #include <cudf/utilities/default_stream.hpp>
 #include <cudf/utilities/memory_resource.hpp>
+#include <cudf/utilities/span.hpp>
 #include <cudf/utilities/type_checks.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <thrust/scatter.h>
@@ -34,7 +35,7 @@ namespace lists {
 namespace detail {
 
 template <typename IndexIterator>
-rmm::device_uvector<unbound_list_view> list_vector_from_column(
+cuda::device_buffer<unbound_list_view> list_vector_from_column(
   unbound_list_view::label_type label,
   cudf::lists_column_device_view const& lists_column,
   IndexIterator index_begin,
@@ -44,12 +45,12 @@ rmm::device_uvector<unbound_list_view> list_vector_from_column(
 {
   auto n_rows = cuda::std::distance(index_begin, index_end);
 
-  auto vector = rmm::device_uvector<unbound_list_view>(n_rows, stream, mr);
+  auto vector = cuda::device_buffer<unbound_list_view>(stream, mr, n_rows, cuda::no_init);
 
   thrust::transform(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                     index_begin,
                     index_end,
-                    vector.begin(),
+                    vector.data(),
                     cuda::proclaim_return_type<unbound_list_view>(
                       [label, lists_column] __device__(size_type row_index) {
                         return unbound_list_view{label, lists_column, row_index};
@@ -78,8 +79,8 @@ rmm::device_uvector<unbound_list_view> list_vector_from_column(
  * @return New lists column.
  */
 template <typename MapIterator>
-std::unique_ptr<column> scatter_impl(rmm::device_uvector<unbound_list_view> const& source_vector,
-                                     rmm::device_uvector<unbound_list_view>& target_vector,
+std::unique_ptr<column> scatter_impl(device_span<unbound_list_view const> source_vector,
+                                     device_span<unbound_list_view> target_vector,
                                      MapIterator scatter_map_begin,
                                      MapIterator scatter_map_end,
                                      column_view const& source,
@@ -93,10 +94,10 @@ std::unique_ptr<column> scatter_impl(rmm::device_uvector<unbound_list_view> cons
 
   // Scatter.
   thrust::scatter(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                  source_vector.begin(),
-                  source_vector.end(),
+                  source_vector.data(),
+                  (source_vector.data() + source_vector.size()),
                   scatter_map_begin,
-                  target_vector.begin());
+                  target_vector.data());
 
   auto const source_lists_column_view =
     lists_column_view(source);  // Checks that this is a list column.
@@ -104,7 +105,7 @@ std::unique_ptr<column> scatter_impl(rmm::device_uvector<unbound_list_view> cons
     lists_column_view(target);  // Checks that target is a list column.
 
   auto list_size_begin = cuda::transform_iterator(
-    target_vector.begin(),
+    target_vector.data(),
     cuda::proclaim_return_type<size_type>([] __device__(unbound_list_view l) { return l.size(); }));
   auto offsets_column = std::get<0>(cudf::detail::make_offsets_child_column(
     list_size_begin, list_size_begin + target.size(), stream, mr));

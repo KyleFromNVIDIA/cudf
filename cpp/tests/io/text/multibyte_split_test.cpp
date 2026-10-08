@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2024, NVIDIA CORPORATION.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -11,6 +11,7 @@
 #include <cudf_test/testing_main.hpp>
 
 #include <cudf/concatenate.hpp>
+#include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/io/text/byte_range_info.hpp>
 #include <cudf/io/text/data_chunk_source_factories.hpp>
 #include <cudf/io/text/multibyte_split.hpp>
@@ -565,6 +566,50 @@ TEST_F(MultibyteSplitTest, OutputBuilder)
   ASSERT_EQ(output5.head().data(), output4.tail().data() + 1);
   ASSERT_EQ(output5.tail().size(), 0);
   ASSERT_EQ(output5.tail().data(), nullptr);
+}
+
+TEST_F(MultibyteSplitTest, OutputBuilderValues)
+{
+  auto const stream = cudf::get_default_stream();
+  cudf::output_builder<int> builder{3, 4, stream};
+  std::vector<int> values{1, 2, 3, 4, 5, 6, 7, 8, 9};
+  std::size_t written = 0;
+  auto append         = [&](std::size_t count) {
+    auto const output     = builder.next_output(stream);
+    auto const head_count = std::min(count, output.head().size());
+    if (head_count != 0) {
+      CUDF_CUDA_TRY(cudf::detail::memcpy_async(
+        output.head().data(), values.data() + written, head_count * sizeof(int), stream));
+    }
+    if (count > head_count) {
+      CUDF_CUDA_TRY(cudf::detail::memcpy_async(output.tail().data(),
+                                               values.data() + written + head_count,
+                                               (count - head_count) * sizeof(int),
+                                               stream));
+    }
+    builder.advance_output(count, stream);
+    written += count;
+  };
+
+  append(2);
+  append(3);
+  // Allocates a tail chunk without writing to it.
+  append(0);
+  EXPECT_EQ(builder.front_element(stream), 1);
+  EXPECT_EQ(builder.back_element(stream), 5);
+  // The next write spans the remaining head element and the empty tail chunk.
+  append(3);
+  append(1);
+  EXPECT_EQ(builder.size(), values.size());
+  EXPECT_EQ(builder.front_element(stream), values.front());
+  EXPECT_EQ(builder.back_element(stream), values.back());
+  auto const gathered = builder.gather(stream, cudf::get_current_device_resource_ref());
+  auto const result   = cudf::detail::make_std_vector(gathered, stream);
+  EXPECT_EQ(result, values);
+  auto const gathered_buffer =
+    builder.gather<cuda::device_buffer<int>>(stream, cudf::get_current_device_resource_ref());
+  EXPECT_EQ(gathered_buffer.size(), values.size());
+  EXPECT_EQ(cudf::detail::make_std_vector(gathered_buffer, stream), values);
 }
 
 CUDF_TEST_PROGRAM_MAIN()

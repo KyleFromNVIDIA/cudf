@@ -11,9 +11,9 @@
 #include <cudf/detail/utilities/device_operators.cuh>
 #include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/stream>
 #include <thrust/scan.h>
@@ -33,13 +33,14 @@ std::unique_ptr<column> scan_inclusive(column_view const& input,
                                        rmm::device_async_resource_ref mr)
 {
   // Create a gather map containing indices of the prefix min/max elements.
-  auto gather_map = rmm::device_uvector<size_type>(input.size(), stream);
+  cuda::device_buffer<size_type> gather_map(
+    stream, cudf::get_current_device_resource_ref(), input.size(), cuda::no_init);
   auto const binop_generator =
     cudf::reduction::detail::arg_minmax_binop_generator::create<Op>(input, stream);
   thrust::inclusive_scan(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                          cuda::counting_iterator<size_type>{0},
                          cuda::counting_iterator<size_type>{input.size()},
-                         gather_map.begin(),
+                         gather_map.data(),
                          binop_generator.binop());
 
   // Gather the children columns of the input column. Must use `get_sliced_child` to properly

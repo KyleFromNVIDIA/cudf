@@ -20,6 +20,7 @@
 #include <rmm/mr/polymorphic_allocator.hpp>
 
 #include <cuco/static_map.cuh>
+#include <cuda/buffer>
 #include <cuda/stream>
 
 namespace cudf::io::orc::detail {
@@ -444,7 +445,7 @@ void rowgroup_char_counts(device_2dspan<size_type> counts,
  * @param stream CUDA stream used for device memory operations and kernel launches
  */
 void decimal_sizes_to_offsets(device_2dspan<rowgroup_rows const> rg_bounds,
-                              std::map<uint32_t, rmm::device_uvector<uint32_t>>& elem_sizes,
+                              std::map<uint32_t, cuda::device_buffer<uint32_t>>& elem_sizes,
                               cuda::stream_ref stream);
 
 /**

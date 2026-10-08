@@ -16,6 +16,7 @@
 #include <rmm/device_buffer.hpp>
 #include <rmm/device_uvector.hpp>
 
+#include <cuda/buffer>
 #include <cuda/stream>
 
 #include <cstddef>
@@ -184,7 +185,7 @@ class hash_join {
     _preprocessed_right;        ///< input table preprocssed for row operators
   std::unique_ptr<impl> _impl;  ///< CUDA hash table implementation
 
-  [[nodiscard]] std::unique_ptr<rmm::device_uvector<size_type>> make_match_counts(
+  [[nodiscard]] std::unique_ptr<cuda::device_buffer<size_type>> make_match_counts(
     join_kind join,
     cudf::table_view const& left,
     cuda::stream_ref stream,

@@ -19,8 +19,7 @@
 #include <cudf/utilities/traits.hpp>
 #include <cudf/utilities/type_checks.hpp>
 
-#include <rmm/device_uvector.hpp>
-
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/std/iterator>
 #include <cuda/stream>
@@ -156,14 +155,17 @@ std::unique_ptr<column> scatter_gather_based_if_else(cudf::column_view const& lh
                                                      cuda::stream_ref stream,
                                                      rmm::device_async_resource_ref mr)
 {
-  auto gather_map = rmm::device_uvector<size_type>{static_cast<std::size_t>(size), stream};
+  auto gather_map_storage = cuda::device_buffer<size_type>{
+    stream, cudf::get_current_device_resource_ref(), static_cast<std::size_t>(size), cuda::no_init};
   auto const gather_map_end = cudf::detail::copy_if(cuda::counting_iterator<size_type>{0},
                                                     cuda::counting_iterator<size_type>{size},
-                                                    gather_map.begin(),
+                                                    gather_map_storage.data(),
                                                     is_left,
                                                     stream);
 
-  gather_map.resize(cuda::std::distance(gather_map.begin(), gather_map_end), stream);
+  auto const gather_map = device_span<size_type const>{
+    gather_map_storage.data(),
+    static_cast<std::size_t>(cuda::std::distance(gather_map_storage.data(), gather_map_end))};
 
   auto const scatter_src_lhs = cudf::detail::gather(table_view{std::vector<column_view>{lhs}},
                                                     gather_map,
@@ -190,18 +192,19 @@ std::unique_ptr<column> scatter_gather_based_if_else(cudf::scalar const& lhs,
                                                      cuda::stream_ref stream,
                                                      rmm::device_async_resource_ref mr)
 {
-  auto scatter_map = rmm::device_uvector<size_type>{static_cast<std::size_t>(size), stream};
+  auto scatter_map = cuda::device_buffer<size_type>(
+    stream, cudf::get_current_device_resource_ref(), static_cast<std::size_t>(size), cuda::no_init);
   auto const scatter_map_end = cudf::detail::copy_if(cuda::counting_iterator<size_type>{0},
                                                      cuda::counting_iterator<size_type>{size},
-                                                     scatter_map.begin(),
+                                                     scatter_map.data(),
                                                      is_left,
                                                      stream);
 
-  auto const scatter_map_size  = std::distance(scatter_map.begin(), scatter_map_end);
+  auto const scatter_map_size  = std::distance(scatter_map.data(), scatter_map_end);
   auto scatter_source          = std::vector<std::reference_wrapper<scalar const>>{std::ref(lhs)};
   auto scatter_map_column_view = cudf::column_view{cudf::data_type{cudf::type_id::INT32},
                                                    static_cast<cudf::size_type>(scatter_map_size),
-                                                   scatter_map.begin(),
+                                                   scatter_map.data(),
                                                    nullptr,
                                                    0};
 

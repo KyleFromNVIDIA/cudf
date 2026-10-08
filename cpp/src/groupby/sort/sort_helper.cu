@@ -15,14 +15,15 @@
 #include <cudf/detail/scatter.hpp>
 #include <cudf/detail/sequence.hpp>
 #include <cudf/detail/sorting.hpp>
+#include <cudf/detail/utilities/cuda_memcpy.hpp>
 #include <cudf/strings/string_view.hpp>
 #include <cudf/table/table_device_view.cuh>
 #include <cudf/utilities/memory_resource.hpp>
 #include <cudf/utilities/traits.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/stream>
 #include <thrust/transform.h>
 
@@ -117,14 +118,15 @@ column_view sort_groupby_helper::key_sort_order(cuda::stream_ref stream)
   return sliced_key_sorted_order();
 }
 
-sort_groupby_helper::index_vector const& sort_groupby_helper::group_offsets(cuda::stream_ref stream)
+device_span<size_type const> sort_groupby_helper::group_offsets(cuda::stream_ref stream)
 {
-  if (_group_offsets) return *_group_offsets;
+  if (_group_offsets) return {_group_offsets->data(), static_cast<std::size_t>(_num_group_offsets)};
 
   auto const size = num_keys(stream);
   // Create a temporary variable and only set _group_offsets right before the return.
   // This way, a 2nd (parallel) call to this will not be given a partially created object.
-  auto group_offsets = std::make_unique<index_vector>(size + 1, stream);
+  auto group_offsets = std::make_unique<index_vector>(
+    stream, cudf::get_current_device_resource_ref(), size + 1, cuda::no_init);
 
   auto const sorted_order = key_sort_order(stream).data<size_type>();
   size_type num_groups;
@@ -134,30 +136,35 @@ sort_groupby_helper::index_vector const& sort_groupby_helper::group_offsets(cuda
     num_groups = compute_group_offsets<false>(_keys, sorted_order, size, *group_offsets, stream);
   }
 
-  group_offsets->set_element_async(num_groups, size, stream);
-  group_offsets->resize(num_groups + 1, stream);
+  CUDF_CUDA_TRY(cudf::detail::memcpy_async(
+    group_offsets->data() + num_groups, &size, sizeof(size_type), stream));
   stream.sync();
 
-  _group_offsets = std::move(group_offsets);
-  return *_group_offsets;
+  _num_group_offsets = num_groups + 1;
+  _group_offsets     = std::move(group_offsets);
+  return {_group_offsets->data(), static_cast<std::size_t>(_num_group_offsets)};
 }
 
-sort_groupby_helper::index_vector const& sort_groupby_helper::group_labels(cuda::stream_ref stream)
+device_span<size_type const> sort_groupby_helper::group_labels(cuda::stream_ref stream)
 {
-  if (_group_labels) return *_group_labels;
+  if (_group_labels) return {_group_labels->data(), _group_labels->size()};
 
   // Create a temporary variable and only set _group_labels right before the return.
   // This way, a 2nd (parallel) call to this will not be given a partially created object.
-  auto group_labels = std::make_unique<index_vector>(num_keys(stream), stream);
+  auto group_labels = std::make_unique<index_vector>(
+    stream, cudf::get_current_device_resource_ref(), num_keys(stream), cuda::no_init);
 
   if (num_keys(stream)) {
     auto const& offsets = group_offsets(stream);
-    cudf::detail::label_segments(
-      offsets.begin(), offsets.end(), group_labels->begin(), group_labels->end(), stream);
+    cudf::detail::label_segments(offsets.begin(),
+                                 offsets.end(),
+                                 group_labels->data(),
+                                 group_labels->data() + group_labels->size(),
+                                 stream);
   }
 
   _group_labels = std::move(group_labels);
-  return *_group_labels;
+  return {_group_labels->data(), _group_labels->size()};
 }
 
 column_view sort_groupby_helper::unsorted_keys_labels(cuda::stream_ref stream)
@@ -252,12 +259,13 @@ std::unique_ptr<table> sort_groupby_helper::unique_keys(cuda::stream_ref stream,
                                                         rmm::device_async_resource_ref mr)
 {
   auto const num_unique_keys = num_groups(stream);
-  auto gather_map            = rmm::device_uvector<size_type>(num_unique_keys, stream);
-  auto const idx_data        = key_sort_order(stream).data<size_type>();
+  cuda::device_buffer<size_type> gather_map(
+    stream, cudf::get_current_device_resource_ref(), num_unique_keys, cuda::no_init);
+  auto const idx_data = key_sort_order(stream).data<size_type>();
   thrust::transform(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                     group_offsets(stream).begin(),
                     group_offsets(stream).begin() + num_unique_keys,
-                    gather_map.begin(),
+                    gather_map.data(),
                     [idx_data] __device__(size_type i) -> size_type { return idx_data[i]; });
 
   return cudf::detail::gather(_keys,

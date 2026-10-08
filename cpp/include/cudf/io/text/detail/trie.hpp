@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/io/text/detail/multistate.hpp>
 #include <cudf/utilities/export.hpp>
@@ -12,6 +13,7 @@
 
 #include <rmm/resource_ref.hpp>
 
+#include <cuda/buffer>
 #include <cuda/stream>
 
 #include <algorithm>
@@ -102,9 +104,9 @@ struct trie_device_view {
 struct trie {
  private:
   cudf::size_type _max_duplicate_tokens;
-  rmm::device_uvector<trie_node> _nodes;
+  cuda::device_buffer<trie_node> _nodes;
 
-  trie(cudf::size_type max_duplicate_tokens, rmm::device_uvector<trie_node>&& nodes)
+  trie(cudf::size_type max_duplicate_tokens, cuda::device_buffer<trie_node>&& nodes)
     : _max_duplicate_tokens(max_duplicate_tokens), _nodes(std::move(nodes))
   {
   }
@@ -229,7 +231,7 @@ struct trie {
 
     auto max_duplicate_tokens = most_common_token->second;
 
-    return trie{max_duplicate_tokens, cudf::detail::make_device_uvector(trie_nodes, stream, mr)};
+    return trie{max_duplicate_tokens, cudf::detail::make_device_buffer(trie_nodes, stream, mr)};
   }
 
   [[nodiscard]] trie_device_view view() const { return trie_device_view{_nodes}; }

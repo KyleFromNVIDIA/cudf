@@ -10,6 +10,7 @@
 #include <cudf_test/testing_main.hpp>
 #include <cudf_test/type_lists.hpp>
 
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/utilities/default_stream.hpp>
 #include <cudf/utilities/memory_resource.hpp>
@@ -233,19 +234,20 @@ CUDF_KERNEL void simple_device_kernel(device_span<bool> result) { result[0] = tr
 
 TEST(SpanTest, CanUseDeviceSpan)
 {
-  auto d_message = cudf::detail::make_zeroed_device_uvector_async<bool>(
+  auto d_message = cudf::detail::make_zeroed_device_buffer_async<bool>(
     1, cudf::get_default_stream(), cudf::get_current_device_resource_ref());
 
   auto d_span = device_span<bool>(d_message.data(), d_message.size());
 
   simple_device_kernel<<<1, 1, 0, cudf::get_default_stream().get()>>>(d_span);
 
-  ASSERT_TRUE(d_message.element(0, cudf::get_default_stream()));
+  auto host_message = cudf::detail::make_host_vector(d_message, cudf::get_default_stream());
+  ASSERT_TRUE(host_message[0]);
 }
 
 TEST(SpanTest, CanUseCudaStdSpan)
 {
-  auto d_message = cudf::detail::make_zeroed_device_uvector_async<int>(
+  auto d_message = cudf::detail::make_zeroed_device_buffer_async<int>(
     1, cudf::get_default_stream(), cudf::get_current_device_resource_ref());
 
   auto const d_span = device_span<int const>(d_message.data(), d_message.size());

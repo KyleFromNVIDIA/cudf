@@ -17,6 +17,7 @@
 #include <cudf/detail/structs/utilities.hpp>
 #include <cudf/detail/transform.hpp>
 #include <cudf/detail/utilities/batched_memcpy.hpp>
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/detail/utilities/integer_utils.hpp>
 #include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/io/config_utils.hpp>
@@ -139,14 +140,21 @@ cuda::device_buffer<std::uint8_t> decompress_stripe_data(
   // This is still a valid input, thus do not be panick.
   if (decomp_data.empty()) { return decomp_data; }
 
-  rmm::device_uvector<device_span<uint8_t const>> inflate_in(
-    num_compressed_blocks + num_uncompressed_blocks, stream);
-  rmm::device_uvector<device_span<uint8_t>> inflate_out(
-    num_compressed_blocks + num_uncompressed_blocks, stream);
-  rmm::device_uvector<codec_exec_result> inflate_res(num_compressed_blocks, stream);
+  cuda::device_buffer<device_span<uint8_t const>> inflate_in(
+    stream,
+    cudf::get_current_device_resource_ref(),
+    num_compressed_blocks + num_uncompressed_blocks,
+    cuda::no_init);
+  cuda::device_buffer<device_span<uint8_t>> inflate_out(
+    stream,
+    cudf::get_current_device_resource_ref(),
+    num_compressed_blocks + num_uncompressed_blocks,
+    cuda::no_init);
+  cuda::device_buffer<codec_exec_result> inflate_res(
+    stream, cudf::get_current_device_resource_ref(), num_compressed_blocks, cuda::no_init);
   thrust::fill(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-               inflate_res.begin(),
-               inflate_res.end(),
+               inflate_res.data(),
+               (inflate_res.data() + inflate_res.size()),
                codec_exec_result{0, codec_status::FAILURE});
 
   // Parse again to populate the decompression input/output buffers
@@ -198,7 +206,7 @@ cuda::device_buffer<std::uint8_t> decompress_stripe_data(
   thrust::for_each(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                    cuda::counting_iterator<std::size_t>{0},
                    cuda::counting_iterator{inflate_res.size()},
-                   [results           = inflate_res.begin(),
+                   [results           = inflate_res.data(),
                     any_block_failure = any_block_failure.device_ptr()] __device__(auto const idx) {
                      if (results[idx].status != codec_status::SUCCESS) {
                        *any_block_failure = true;
@@ -305,12 +313,13 @@ void update_null_mask(cudf::detail::hostdevice_2dvector<column_desc>& chunks,
       auto parent_mask_len = chunks[0][col_idx].column_num_rows;
 
       if (child_valid_map_base != nullptr) {
-        rmm::device_uvector<uint32_t> dst_idx(child_mask_len, stream);
+        cuda::device_buffer<uint32_t> dst_idx(
+          stream, cudf::get_current_device_resource_ref(), child_mask_len, cuda::no_init);
         // Copy indexes at which the parent has valid value.
         cudf::detail::copy_if_async(
           cuda::counting_iterator<int64_t>{0},
           cuda::counting_iterator{parent_mask_len},
-          dst_idx.begin(),
+          dst_idx.data(),
           [parent_valid_map_base] __device__(auto idx) -> bool {
             return bit_is_set(parent_valid_map_base, idx);
           },
@@ -397,7 +406,8 @@ void decode_stream_data(int64_t num_dicts,
   });
 
   // Allocate global dictionary for deserializing
-  rmm::device_uvector<dictionary_entry> global_dict(num_dicts, stream);
+  cuda::device_buffer<dictionary_entry> global_dict(
+    stream, cudf::get_current_device_resource_ref(), num_dicts, cuda::no_init);
 
   chunks.host_to_device_async(stream);
   decode_nulls_and_string_dictionaries(chunks.base_device_ptr(),
@@ -470,12 +480,12 @@ void scan_null_counts(cudf::detail::hostdevice_2dvector<column_desc> const& chun
       prefix_sums_to_update.push_back({col_idx, d_prefix_sums + num_stripes * col_idx});
     }
   }
-  auto const d_prefix_sums_to_update = cudf::detail::make_device_uvector_async(
+  auto const d_prefix_sums_to_update = cudf::detail::make_device_buffer_async(
     prefix_sums_to_update, stream, cudf::get_current_device_resource_ref());
 
   thrust::for_each(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                   d_prefix_sums_to_update.begin(),
-                   d_prefix_sums_to_update.end(),
+                   d_prefix_sums_to_update.data(),
+                   (d_prefix_sums_to_update.data() + d_prefix_sums_to_update.size()),
                    [num_stripes, chunks = chunks.device_view()] __device__(auto const& idx_psums) {
                      auto const col_idx = idx_psums.first;
                      auto const psums   = idx_psums.second;
@@ -740,7 +750,7 @@ void reader_impl::decompress_and_decode_stripes(read_mode mode)
       std::size_t{0},
       [](auto const& sum, auto const& cols_level) { return sum + cols_level.size(); });
 
-    return cudf::detail::make_zeroed_device_uvector_async<uint32_t>(
+    return cudf::detail::make_zeroed_device_buffer_async<uint32_t>(
       num_total_cols * stripe_count, _stream, cudf::get_current_device_resource_ref());
   }();
   std::size_t num_processed_lvl_columns      = 0;

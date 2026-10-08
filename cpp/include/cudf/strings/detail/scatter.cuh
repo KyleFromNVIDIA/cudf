@@ -11,9 +11,9 @@
 #include <cudf/utilities/memory_resource.hpp>
 #include <cudf/utilities/span.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/std/iterator>
@@ -59,7 +59,7 @@ std::unique_ptr<column> scatter(SourceIterator begin,
   if (target.is_empty()) return make_empty_column(type_id::STRING);
 
   // create vector of string_view's to scatter into
-  rmm::device_uvector<string_view> target_vector =
+  cuda::device_buffer<string_view> target_vector =
     create_string_vector_from_column(target, stream, cudf::get_current_device_resource_ref());
 
   // this ensures empty strings are not mapped to nulls in the make_strings_column function
@@ -74,7 +74,7 @@ std::unique_ptr<column> scatter(SourceIterator begin,
                   itr,
                   itr + size,
                   scatter_map,
-                  target_vector.begin());
+                  target_vector.data());
 
   // build the output column
   auto sv_span = cudf::device_span<string_view const>(target_vector);

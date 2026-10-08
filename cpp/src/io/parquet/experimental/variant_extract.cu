@@ -30,9 +30,9 @@
 #include <cudf/utilities/type_dispatcher.hpp>
 
 #include <rmm/device_buffer.hpp>
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/numeric>
@@ -1386,9 +1386,9 @@ std::unique_ptr<column> get_variant_field(column_view const& variant_column,
   cudf::lists_column_device_view meta_lists_device_view(*meta_device_view);
   cudf::lists_column_device_view val_lists_device_view(*val_device_view);
 
-  rmm::device_uvector<size_type> d_sizes(num_rows, stream, temp_mr);
+  cuda::device_buffer<size_type> d_sizes(stream, temp_mr, num_rows, cuda::no_init);
   // Caches the per-row intra-value byte offset
-  rmm::device_uvector<size_type> d_src_offsets(num_rows, stream, temp_mr);
+  cuda::device_buffer<size_type> d_src_offsets(stream, temp_mr, num_rows, cuda::no_init);
   auto null_mask =
     variant_column.nullable()
       ? cudf::detail::copy_bitmask(variant_column, stream, mr)
@@ -1437,7 +1437,7 @@ std::unique_ptr<column> get_variant_field(column_view const& variant_column,
         [out_base, d_off = d_offsets.data()] __device__(size_type row) -> uint8_t* {
           return out_base + d_off[row];
         }));
-    cudf::detail::batched_memcpy_async(src_iter, dst_iter, d_sizes.begin(), num_rows, stream);
+    cudf::detail::batched_memcpy_async(src_iter, dst_iter, d_sizes.data(), num_rows, stream);
   }
 
   auto const null_count = num_rows - cudf::detail::count_set_bits(d_null_mask, 0, num_rows, stream);

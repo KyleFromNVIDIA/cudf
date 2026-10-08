@@ -22,6 +22,7 @@
 #include <nvtext/replace.hpp>
 
 #include <cuda/atomic>
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/std/functional>
 #include <cuda/std/iterator>
@@ -289,10 +290,13 @@ std::unique_ptr<cudf::column> replace_helper(ReplacerFn replacer,
     cudf::detail::offsetalator_factory::make_input_iterator(input.offsets(), input.offset());
 
   // divide up long strings into shorter strings by finding new sub-offsets at delimiters
-  auto sub_count   = chars_size / LS_SUB_BLOCK_SIZE;
-  auto tmp_offsets = rmm::device_uvector<int64_t>(sub_count + input.size() + 1, stream);
+  auto sub_count           = chars_size / LS_SUB_BLOCK_SIZE;
+  auto tmp_offsets_storage = cuda::device_buffer<int64_t>(
+    stream, cudf::get_current_device_resource_ref(), sub_count + input.size() + 1, cuda::no_init);
+  auto tmp_offsets = cudf::device_span<int64_t>{tmp_offsets_storage};
   {
-    rmm::device_uvector<int64_t> sub_offsets(sub_count, stream);
+    cuda::device_buffer<int64_t> sub_offsets(
+      stream, cudf::get_current_device_resource_ref(), sub_count, cuda::no_init);
     auto const count_itr = cuda::counting_iterator<int64_t>{0};
     thrust::transform(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                       count_itr,
@@ -302,19 +306,19 @@ std::unique_ptr<cudf::column> replace_helper(ReplacerFn replacer,
     // remove 0s -- where sub-offset could not be computed
     auto const remove_end =
       thrust::remove(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                     sub_offsets.begin(),
-                     sub_offsets.end(),
+                     sub_offsets.data(),
+                     (sub_offsets.data() + sub_offsets.size()),
                      0L);
-    sub_count = cuda::std::distance(sub_offsets.begin(), remove_end);
+    sub_count = cuda::std::distance(sub_offsets.data(), remove_end);
 
     // merge them with input offsets
     thrust::merge(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                   input_offsets,
                   input_offsets + input.size() + 1,
-                  sub_offsets.begin(),
-                  sub_offsets.begin() + sub_count,
+                  sub_offsets.data(),
+                  sub_offsets.data() + sub_count,
                   tmp_offsets.begin());
-    tmp_offsets.resize(sub_count + input.size() + 1, stream);
+    tmp_offsets = tmp_offsets.first(sub_count + input.size() + 1);
     stream.sync();  // protect against destruction of sub_offsets
   }
 
@@ -327,19 +331,21 @@ std::unique_ptr<cudf::column> replace_helper(ReplacerFn replacer,
   auto const d_tmp_strings = cudf::column_device_view::create(tmp_strings, stream);
 
   // compute indices to the actual output rows
-  auto indices = rmm::device_uvector<cudf::size_type>(tmp_offsets.size(), stream);
+  auto indices = cuda::device_buffer<cudf::size_type>(
+    stream, cudf::get_current_device_resource_ref(), tmp_offsets.size(), cuda::no_init);
   thrust::upper_bound(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                       input_offsets,
                       input_offsets + input.size() + 1,
                       tmp_offsets.begin(),
                       tmp_offsets.end(),
-                      indices.begin());
+                      indices.data());
 
   // initialize the output row sizes
-  auto d_sizes = rmm::device_uvector<cudf::size_type>(input.size(), stream);
+  auto d_sizes = cuda::device_buffer<cudf::size_type>(
+    stream, cudf::get_current_device_resource_ref(), input.size(), cuda::no_init);
   thrust::fill(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-               d_sizes.begin(),
-               d_sizes.end(),
+               d_sizes.data(),
+               (d_sizes.data() + d_sizes.size()),
                0);
 
   replacer.d_strings      = *d_tmp_strings;

@@ -12,9 +12,9 @@
 #include <cudf/utilities/default_stream.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <thrust/transform.h>
 
 namespace cudf {
@@ -65,7 +65,8 @@ std::unique_ptr<cudf::column> column_from_managed_udf_string_array(
   managed_udf_string* managed_strings, cudf::size_type size, cuda::stream_ref stream)
 {
   // create string_views of the udf_strings
-  auto indices = rmm::device_uvector<cudf::string_view>(size, stream);
+  auto indices = cuda::device_buffer<cudf::string_view>(
+    stream, cudf::get_current_device_resource_ref(), size, cuda::no_init);
   thrust::transform(rmm::exec_policy_nosync(stream),
                     managed_strings,
                     managed_strings + size,

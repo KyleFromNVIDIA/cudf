@@ -14,6 +14,7 @@
 
 #include <rmm/device_uvector.hpp>
 
+#include <cuda/buffer>
 #include <cuda/std/limits>
 #include <cuda/stream>
 
@@ -82,25 +83,25 @@ CUDF_HOST_DEVICE constexpr size_type JoinNoMatch = cuda::std::numeric_limits<siz
 /**
  * @brief Holds context information about matches between tables during a join operation.
  *
- * This structure stores the left table view and a device vector containing the count of
+ * This structure stores the left table view and a device buffer containing the count of
  * matching rows in the right table for each row in the left table. Used primarily by
  * inner_join_match_context() to track join match information.
  */
 struct join_match_context {
   table_view _left_table;  ///< View of the left table involved in the join operation
-  std::unique_ptr<rmm::device_uvector<size_type>>
-    _match_counts;  ///< A device vector containing the count of matching rows in the right table
+  std::unique_ptr<cuda::device_buffer<size_type>>
+    _match_counts;  ///< A device buffer containing the count of matching rows in the right table
                     ///< for each row in left table
 
   /**
    * @brief Construct a join_match_context
    *
    * @param left_table View of the left table involved in the join operation
-   * @param match_counts Device vector containing the count of matching rows in the right table
+   * @param match_counts Device buffer containing the count of matching rows in the right table
    *                     for each row in the left table
    */
   join_match_context(table_view const& left_table,  // NOLINT(modernize-pass-by-value)
-                     std::unique_ptr<rmm::device_uvector<size_type>> match_counts)
+                     std::unique_ptr<cuda::device_buffer<size_type>> match_counts)
     : _left_table{left_table}, _match_counts{std::move(match_counts)}
   {
   }

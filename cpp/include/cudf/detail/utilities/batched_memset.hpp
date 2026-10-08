@@ -7,7 +7,7 @@
 
 #include <cudf/detail/iterator.cuh>
 #include <cudf/detail/nvtx/ranges.hpp>
-#include <cudf/detail/utilities/vector_factories.hpp>
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/utilities/error.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
@@ -39,12 +39,12 @@ void batched_memset(cudf::host_span<cudf::device_span<T> const> host_buffers,
   CUDF_FUNC_RANGE();
 
   // Copy buffer spans into device memory and then get sizes
-  auto buffers = cudf::detail::make_device_uvector_async(
+  auto buffers = cudf::detail::make_device_buffer_async(
     host_buffers, stream, cudf::get_current_device_resource_ref());
 
   // Vector of sizes of all buffer spans
   auto sizes = cuda::transform_iterator(
-    buffers.begin(), cuda::proclaim_return_type<std::size_t>([] __device__(auto const& buffer) {
+    buffers.data(), cuda::proclaim_return_type<std::size_t>([] __device__(auto const& buffer) {
       return buffer.size();
     }));
 
@@ -53,7 +53,7 @@ void batched_memset(cudf::host_span<cudf::device_span<T> const> host_buffers,
 
   // Iterator to each device span pointer
   auto iter_out = cuda::transform_iterator(
-    buffers.begin(),
+    buffers.data(),
     cuda::proclaim_return_type<T*>([] __device__(auto const& buffer) { return buffer.data(); }));
 
   auto const num_buffers = host_buffers.size();

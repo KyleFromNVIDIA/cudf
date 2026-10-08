@@ -8,6 +8,7 @@
 
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/std/tuple>
@@ -23,13 +24,14 @@ batched_args create_batched_nvcomp_args(device_span<device_span<uint8_t const> c
   auto const output_mr       = mr.get_output_mr();
   auto const temp_mr         = mr.get_temporary_mr();
   auto const num_comp_chunks = inputs.size();
-  rmm::device_uvector<void const*> input_data_ptrs(num_comp_chunks, stream, output_mr);
-  rmm::device_uvector<size_t> input_data_sizes(num_comp_chunks, stream, output_mr);
-  rmm::device_uvector<void*> output_data_ptrs(num_comp_chunks, stream, output_mr);
-  rmm::device_uvector<size_t> output_data_sizes(num_comp_chunks, stream, output_mr);
+  cuda::device_buffer<void const*> input_data_ptrs(
+    stream, output_mr, num_comp_chunks, cuda::no_init);
+  cuda::device_buffer<size_t> input_data_sizes(stream, output_mr, num_comp_chunks, cuda::no_init);
+  cuda::device_buffer<void*> output_data_ptrs(stream, output_mr, num_comp_chunks, cuda::no_init);
+  cuda::device_buffer<size_t> output_data_sizes(stream, output_mr, num_comp_chunks, cuda::no_init);
 
   // Prepare the input vectors
-  auto ins_it = cuda::make_zip_iterator(input_data_ptrs.begin(), input_data_sizes.begin());
+  auto ins_it = cuda::make_zip_iterator(input_data_ptrs.data(), input_data_sizes.data());
   thrust::transform(
     rmm::exec_policy_nosync(stream, temp_mr),
     inputs.begin(),
@@ -38,7 +40,7 @@ batched_args create_batched_nvcomp_args(device_span<device_span<uint8_t const> c
     [] __device__(auto const& in) { return cuda::std::make_tuple(in.data(), in.size()); });
 
   // Prepare the output vectors
-  auto outs_it = cuda::make_zip_iterator(output_data_ptrs.begin(), output_data_sizes.begin());
+  auto outs_it = cuda::make_zip_iterator(output_data_ptrs.data(), output_data_sizes.data());
   thrust::transform(
     rmm::exec_policy_nosync(stream, temp_mr),
     outputs.begin(),
@@ -52,16 +54,16 @@ batched_args create_batched_nvcomp_args(device_span<device_span<uint8_t const> c
           std::move(output_data_sizes)};
 }
 
-std::pair<rmm::device_uvector<void const*>, rmm::device_uvector<size_t>> create_get_temp_size_args(
+std::pair<cuda::device_buffer<void const*>, cuda::device_buffer<size_t>> create_get_temp_size_args(
   device_span<device_span<uint8_t const> const> inputs,
   cuda::stream_ref stream,
   cudf::memory_resources mr)
 {
   auto const output_mr = mr.get_output_mr();
-  rmm::device_uvector<void const*> input_data_ptrs(inputs.size(), stream, output_mr);
-  rmm::device_uvector<size_t> input_data_sizes(inputs.size(), stream, output_mr);
+  cuda::device_buffer<void const*> input_data_ptrs(stream, output_mr, inputs.size(), cuda::no_init);
+  cuda::device_buffer<size_t> input_data_sizes(stream, output_mr, inputs.size(), cuda::no_init);
 
-  auto ins_it = cuda::make_zip_iterator(input_data_ptrs.begin(), input_data_sizes.begin());
+  auto ins_it = cuda::make_zip_iterator(input_data_ptrs.data(), input_data_sizes.data());
   thrust::transform(
     rmm::exec_policy_nosync(stream, mr.get_temporary_mr()),
     inputs.begin(),

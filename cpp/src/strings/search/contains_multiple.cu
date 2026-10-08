@@ -7,6 +7,7 @@
 #include <cudf/detail/iterator.cuh>
 #include <cudf/detail/null_mask.hpp>
 #include <cudf/detail/nvtx/ranges.hpp>
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/detail/utilities/cuda.cuh>
 #include <cudf/detail/utilities/grid_1d.cuh>
 #include <cudf/detail/utilities/vector_factories.hpp>
@@ -191,8 +192,10 @@ std::unique_ptr<table> contains_multiple(strings_column_view const& input,
   auto const d_targets = column_device_view::create(targets.parent(), stream);
 
   // copy the first byte of each target and sort them
-  auto first_bytes = rmm::device_uvector<u_char>(targets.size(), stream);
-  auto indices     = rmm::device_uvector<size_type>(targets.size(), stream);
+  auto first_bytes = cuda::device_buffer<u_char>(
+    stream, cudf::get_current_device_resource_ref(), targets.size(), cuda::no_init);
+  auto indices = cuda::device_buffer<size_type>(
+    stream, cudf::get_current_device_resource_ref(), targets.size(), cuda::no_init);
   {
     auto tgt_itr = cuda::transform_iterator(
       d_targets->begin<string_view>(),
@@ -200,8 +203,8 @@ std::unique_ptr<table> contains_multiple(strings_column_view const& input,
         return d_tgt.empty() ? u_char{0} : static_cast<u_char>(d_tgt.data()[0]);
       }));
     auto count_itr = cuda::counting_iterator<size_type>{0};
-    auto keys_out  = first_bytes.begin();
-    auto vals_out  = indices.begin();
+    auto keys_out  = first_bytes.data();
+    auto vals_out  = indices.data();
     auto num_items = targets.size();
     auto cmp_op    = cuda::std::less();
     auto sv        = stream.get();
@@ -216,17 +219,18 @@ std::unique_ptr<table> contains_multiple(strings_column_view const& input,
   }
 
   // remove duplicates to help speed up lower_bound
-  auto offsets = rmm::device_uvector<size_type>(targets.size(), stream);
+  auto offsets = cuda::device_buffer<size_type>(
+    stream, cudf::get_current_device_resource_ref(), targets.size(), cuda::no_init);
   thrust::sequence(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                   offsets.begin(),
-                   offsets.end());
+                   offsets.data(),
+                   (offsets.data() + offsets.size()));
   auto const end =
     thrust::unique_by_key(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                          first_bytes.begin(),
-                          first_bytes.end(),
-                          offsets.begin());
+                          first_bytes.data(),
+                          (first_bytes.data() + first_bytes.size()),
+                          offsets.data());
   auto const unique_count =
-    static_cast<size_type>(cuda::std::distance(first_bytes.begin(), end.first));
+    static_cast<size_type>(cuda::std::distance(first_bytes.data(), end.first));
 
   // create output columns
   auto const results_iter = cudf::detail::make_counting_transform_iterator(0, [&](int i) {
@@ -245,7 +249,7 @@ std::unique_ptr<table> contains_multiple(strings_column_view const& input,
       });
     auto host_results_pointers =
       std::vector<bool*>(host_results_pointer_iter, host_results_pointer_iter + results.size());
-    return cudf::detail::make_device_uvector(host_results_pointers, stream, mr);
+    return cudf::detail::make_device_buffer(host_results_pointers, stream, mr);
   }();
 
   constexpr cudf::thread_index_type block_size = 256;
@@ -280,7 +284,8 @@ std::unique_ptr<table> contains_multiple(strings_column_view const& input,
       (targets.size() <= targets_threshold) ? (block_size * targets.size()) : 0;
     auto const work_mem_size =
       (targets.size() <= targets_threshold) ? 0 : tile_size * targets.size() * input.size();
-    auto working_memory = rmm::device_uvector<bool>(work_mem_size, stream);
+    auto working_memory = cuda::device_buffer<bool>(
+      stream, cudf::get_current_device_resource_ref(), work_mem_size, cuda::no_init);
 
     cudf::detail::grid_1d grid{static_cast<cudf::thread_index_type>(input.size()) * tile_size,
                                block_size};

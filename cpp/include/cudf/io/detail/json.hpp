@@ -10,7 +10,11 @@
 #include <cudf/utilities/export.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
+#include <cuda/buffer>
 #include <cuda/stream>
+
+#include <cstddef>
+#include <tuple>
 
 namespace CUDF_EXPORT cudf {
 namespace io::json::detail {
@@ -88,6 +92,17 @@ void normalize_single_quotes(datasource::owning_buffer<rmm::device_buffer>& inda
                              rmm::device_async_resource_ref mr);
 
 /**
+ * @brief Owns normalized JSON characters and tracks the valid compacted prefix.
+ */
+struct normalized_json_buffer {
+  cuda::device_buffer<char> storage;
+  std::size_t length;
+
+  [[nodiscard]] char const* data() const { return storage.data(); }
+  [[nodiscard]] std::size_t size() const { return length; }
+};
+
+/**
  * @brief Normalize unquoted whitespace (space and tab characters) using FST
  *
  * @param d_input Input device buffer
@@ -99,13 +114,12 @@ void normalize_single_quotes(datasource::owning_buffer<rmm::device_buffer>& inda
  * @returns Tuple of the normalized column, offsets to each row in column, and lengths of contents
  * of each row
  */
-std::
-  tuple<rmm::device_uvector<char>, rmm::device_uvector<size_type>, rmm::device_uvector<size_type>>
-  normalize_whitespace(device_span<char const> d_input,
-                       device_span<size_type const> col_offsets,
-                       device_span<size_type const> col_lengths,
-                       cuda::stream_ref stream,
-                       rmm::device_async_resource_ref mr);
+std::tuple<normalized_json_buffer, cuda::device_buffer<size_type>, cuda::device_buffer<size_type>>
+normalize_whitespace(device_span<char const> d_input,
+                     device_span<size_type const> col_offsets,
+                     device_span<size_type const> col_lengths,
+                     cuda::stream_ref stream,
+                     rmm::device_async_resource_ref mr);
 
 }  // namespace io::json::detail
 }  // namespace CUDF_EXPORT cudf

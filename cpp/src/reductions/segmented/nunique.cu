@@ -15,6 +15,7 @@
 #include <cudf/types.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/stream>
 #include <thrust/transform.h>
@@ -58,17 +59,17 @@ std::unique_ptr<cudf::column> segmented_nunique(column_view const& col,
     auto const row_equal =
       comparator.equal_to<false>(cudf::nullate::DYNAMIC{col.has_nulls()}, null_equality::EQUAL);
 
-    auto labels = rmm::device_uvector<size_type>(col.size(), stream, temp_mr);
+    auto labels = cuda::device_buffer<size_type>(stream, temp_mr, col.size(), cuda::no_init);
     cudf::detail::label_segments(
-      offsets.begin(), offsets.end(), labels.begin(), labels.end(), stream);
+      offsets.begin(), offsets.end(), labels.data(), (labels.data() + labels.size()), stream);
     auto fn = is_unique_fn<decltype(row_equal)>{
       *d_col, row_equal, null_handling, offsets.data(), labels.data()};
 
-    auto identifiers = rmm::device_uvector<size_type>(col.size(), stream, temp_mr);
+    auto identifiers = cuda::device_buffer<size_type>(stream, temp_mr, col.size(), cuda::no_init);
     thrust::transform(rmm::exec_policy_nosync(stream, temp_mr),
                       cuda::counting_iterator<size_type>{0},
                       cuda::counting_iterator<size_type>{col.size()},
-                      identifiers.begin(),
+                      identifiers.data(),
                       fn);
     return identifiers;
   }();
@@ -81,7 +82,7 @@ std::unique_ptr<cudf::column> segmented_nunique(column_view const& col,
 
   // Sum the unique identifiers within each segment
   auto add_op = op::sum{};
-  cudf::reduction::detail::segmented_reduce(identifiers.begin(),
+  cudf::reduction::detail::segmented_reduce(identifiers.data(),
                                             offsets.begin(),
                                             offsets.end(),
                                             result->mutable_view().data<size_type>(),

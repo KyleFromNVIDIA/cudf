@@ -10,13 +10,14 @@
 
 #include <cudf/column/column_device_view.cuh>
 #include <cudf/column/column_factories.hpp>
+#include <cudf/detail/utilities/cuda.hpp>
+#include <cudf/detail/utilities/cuda_memcpy.hpp>
 #include <cudf/detail/utilities/integer_utils.hpp>
 #include <cudf/filling.hpp>
 #include <cudf/hashing/detail/murmurhash3_x86_32.cuh>
 #include <cudf/strings/detail/strings_column_factories.cuh>
 #include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
 #include <cub/device/device_merge_sort.cuh>
@@ -216,7 +217,7 @@ struct compare_sv {
 /**
  * Creates an ArrowBinaryView vector and data buffer from a strings column.
  */
-std::pair<rmm::device_uvector<ArrowBinaryView>, cuda::device_buffer<char>> create_sv_array(
+std::pair<cuda::device_buffer<ArrowBinaryView>, cuda::device_buffer<char>> create_sv_array(
   cudf::strings_column_view const& input, cuda::stream_ref stream)
 {
   auto const d_strings = cudf::column_device_view::create(input.parent(), stream);
@@ -267,7 +268,8 @@ std::pair<rmm::device_uvector<ArrowBinaryView>, cuda::device_buffer<char>> creat
 
   // now build BinaryView objects from the strings in device memory
   // (for-each works better than transform due to the prefix/data of the ArrowBinaryView)
-  auto d_items = rmm::device_uvector<ArrowBinaryView>(input.size(), stream);
+  auto d_items = cuda::device_buffer<ArrowBinaryView>(
+    stream, cudf::get_current_device_resource_ref(), input.size(), cuda::no_init);
   thrust::for_each_n(rmm::exec_policy_nosync(stream),
                      cuda::counting_iterator<cudf::size_type>{0},
                      input.size(),
@@ -276,21 +278,22 @@ std::pair<rmm::device_uvector<ArrowBinaryView>, cuda::device_buffer<char>> creat
   cuda::device_buffer<char> data_buffer(
     stream, cudf::get_current_device_resource_ref(), longer_chars_size, cuda::no_init);
   auto const chars_data = longer_strings.chars_begin(stream);
-  CUDF_CUDA_TRY(cudaMemcpyAsync(
-    data_buffer.data(), chars_data, longer_chars_size, cudaMemcpyDefault, stream.get()));
+  CUDF_CUDA_TRY(
+    cudf::detail::memcpy_async(data_buffer.data(), chars_data, longer_chars_size, stream));
 
   return std::pair{std::move(d_items), std::move(data_buffer)};
 }
 
 template <typename MapIterator>
-std::pair<rmm::device_uvector<ArrowBinaryView>, cuda::device_buffer<char>> gather_sv_array(
-  rmm::device_uvector<ArrowBinaryView> const& d_items,
+std::pair<cuda::device_buffer<ArrowBinaryView>, cuda::device_buffer<char>> gather_sv_array(
+  cuda::device_buffer<ArrowBinaryView> const& d_items,
   cuda::device_buffer<char> const& data,
   MapIterator begin,
   cudf::size_type map_size,
   cuda::stream_ref stream)
 {
-  auto output   = rmm::device_uvector<ArrowBinaryView>(map_size, stream);
+  auto output = cuda::device_buffer<ArrowBinaryView>(
+    stream, cudf::get_current_device_resource_ref(), map_size, cuda::no_init);
   auto d_output = output.data();
   thrust::gather(
     rmm::exec_policy_nosync(stream), begin, begin + map_size, d_items.data(), d_output);
@@ -304,7 +307,8 @@ std::pair<rmm::device_uvector<ArrowBinaryView>, cuda::device_buffer<char>> gathe
   // The rest of the code compacts the data buffer appropriately.
 
   // record sizes of the long buffers (only single data buffer is supported in this benchmark)
-  auto offsets   = rmm::device_uvector<int32_t>(map_size + 1, stream);
+  auto offsets = cuda::device_buffer<int32_t>(
+    stream, cudf::get_current_device_resource_ref(), map_size + 1, cuda::no_init);
   auto d_offsets = offsets.data();
   thrust::for_each_n(rmm::exec_policy_nosync(stream),
                      cuda::counting_iterator<cudf::size_type>{0},
@@ -315,9 +319,14 @@ std::pair<rmm::device_uvector<ArrowBinaryView>, cuda::device_buffer<char>> gathe
                        d_offsets[idx]  = size > NANOARROW_BINARY_VIEW_INLINE_SIZE ? size : 0;
                      });
   // convert the sizes to offsets (offsets are only for compacting the data)
-  thrust::exclusive_scan(
-    rmm::exec_policy_nosync(stream), offsets.begin(), offsets.end(), offsets.begin());
-  auto total_size  = offsets.element(map_size, stream);
+  thrust::exclusive_scan(rmm::exec_policy_nosync(stream),
+                         offsets.data(),
+                         offsets.data() + offsets.size(),
+                         offsets.data());
+  int32_t total_size{};
+  CUDF_CUDA_TRY(
+    cudf::detail::memcpy_async(&total_size, offsets.data() + map_size, sizeof(total_size), stream));
+  cudf::detail::sync_stream(stream);
   auto output_data = cuda::device_buffer<char>(
     stream, cudf::get_current_device_resource_ref(), total_size, cuda::no_init);
   if (total_size > 0) {
@@ -362,9 +371,10 @@ static void BM_sv_hash(nvbench::state& state)
   auto stream       = cudf::get_default_stream();
   state.set_cuda_stream(nvbench::make_cuda_stream_view(stream.get()));
   state.add_global_memory_writes(num_rows * sizeof(cudf::hash_value_type));
-  auto output = rmm::device_uvector<cudf::hash_value_type>(num_rows, stream);
-  auto begin  = cuda::counting_iterator<cudf::size_type>{0};
-  auto end    = cuda::counting_iterator<cudf::size_type>{num_rows};
+  auto output = cuda::device_buffer<cudf::hash_value_type>(
+    stream, cudf::get_current_device_resource_ref(), num_rows, cuda::no_init);
+  auto begin = cuda::counting_iterator<cudf::size_type>{0};
+  auto end   = cuda::counting_iterator<cudf::size_type>{num_rows};
 
   if (std::getenv(BM_ARROWSTRINGVIEW)) {
     auto [d_items, data_buffer] = create_sv_array(col_view, stream);
@@ -374,7 +384,7 @@ static void BM_sv_hash(nvbench::state& state)
       thrust::transform(rmm::exec_policy_nosync(stream),
                         begin,
                         end,
-                        output.begin(),
+                        output.data(),
                         hash_arrow_sv{d_items.data(), d_chars});
     });
   } else {
@@ -383,7 +393,7 @@ static void BM_sv_hash(nvbench::state& state)
     state.add_global_memory_reads(col_size);
     state.exec(nvbench::exec_tag::sync, [&](nvbench::launch& launch) {
       thrust::transform(
-        rmm::exec_policy_nosync(stream), begin, end, output.begin(), hash_sv{*d_strings});
+        rmm::exec_policy_nosync(stream), begin, end, output.data(), hash_sv{*d_strings});
     });
   }
 }
@@ -404,9 +414,10 @@ static void BM_sv_starts(nvbench::state& state)
   auto stream       = cudf::get_default_stream();
   state.set_cuda_stream(nvbench::make_cuda_stream_view(stream.get()));
   state.add_global_memory_writes(num_rows * sizeof(bool));
-  auto output = rmm::device_uvector<bool>(num_rows, stream);
-  auto begin  = cuda::counting_iterator<cudf::size_type>{0};
-  auto end    = cuda::counting_iterator<cudf::size_type>{num_rows};
+  auto output = cuda::device_buffer<bool>(
+    stream, cudf::get_current_device_resource_ref(), num_rows, cuda::no_init);
+  auto begin = cuda::counting_iterator<cudf::size_type>{0};
+  auto end   = cuda::counting_iterator<cudf::size_type>{num_rows};
 
   if (std::getenv(BM_ARROWSTRINGVIEW)) {
     auto [d_items, data_buffer] = create_sv_array(col_view, stream);
@@ -416,7 +427,7 @@ static void BM_sv_starts(nvbench::state& state)
       thrust::transform(rmm::exec_policy_nosync(stream),
                         begin,
                         end,
-                        output.begin(),
+                        output.data(),
                         starts_arrow_sv{d_items.data(), d_chars, tgt_size});
     });
   } else {
@@ -427,7 +438,7 @@ static void BM_sv_starts(nvbench::state& state)
       thrust::transform(rmm::exec_policy_nosync(stream),
                         begin,
                         end,
-                        output.begin(),
+                        output.data(),
                         starts_sv{*d_strings, tgt_size});
     });
   }
@@ -462,9 +473,10 @@ static void BM_sv_sort(nvbench::state& state)
   state.add_global_memory_writes(num_rows * sizeof(cudf::size_type));
 
   // indices are the keys that are sorted (not inplace)
-  auto keys      = rmm::device_uvector<cudf::size_type>(num_rows, stream);
+  auto keys = cuda::device_buffer<cudf::size_type>(
+    stream, cudf::get_current_device_resource_ref(), num_rows, cuda::no_init);
   auto in_keys   = cuda::counting_iterator<cudf::size_type>{0};
-  auto out_keys  = keys.begin();
+  auto out_keys  = keys.data();
   auto tmp_bytes = std::size_t{0};
 
   if (std::getenv(BM_ARROWSTRINGVIEW)) {

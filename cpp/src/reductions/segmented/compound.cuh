@@ -55,7 +55,7 @@ std::unique_ptr<column> compound_segmented_reduction(column_view const& col,
   auto out_itr = result->mutable_view().template begin<ResultType>();
 
   // Compute counts
-  rmm::device_uvector<size_type> counts =
+  cuda::device_buffer<size_type> counts =
     cudf::reduction::detail::segmented_counts(col.null_mask(),
                                               col.has_nulls(),
                                               offsets,

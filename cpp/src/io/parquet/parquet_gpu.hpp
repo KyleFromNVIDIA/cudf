@@ -22,6 +22,7 @@
 #include <rmm/device_uvector.hpp>
 
 #include <cuda/atomic>
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/std/limits>
 #include <cuda/std/optional>
@@ -999,7 +1000,7 @@ void compute_page_string_sizes_pass1(cudf::detail::hostdevice_span<PageInfo> pag
  */
 void compute_page_string_sizes_pass2(cudf::detail::hostdevice_span<PageInfo> pages,
                                      cudf::detail::hostdevice_span<ColumnChunkDesc const> chunks,
-                                     rmm::device_uvector<uint8_t>& temp_string_buf,
+                                     cuda::device_buffer<uint8_t>& temp_string_buf,
                                      cuda::stream_ref stream);
 
 /**

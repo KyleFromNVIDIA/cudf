@@ -16,6 +16,7 @@
 #include <cudf/copying.hpp>
 #include <cudf/detail/interop.hpp>
 #include <cudf/detail/iterator.cuh>
+#include <cudf/detail/utilities/cuda_memcpy.hpp>
 #include <cudf/dictionary/dictionary_column_view.hpp>
 #include <cudf/dictionary/encode.hpp>
 #include <cudf/interop.hpp>
@@ -23,7 +24,9 @@
 #include <cudf/table/table.hpp>
 #include <cudf/table/table_view.hpp>
 #include <cudf/types.hpp>
+#include <cudf/utilities/memory_resource.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/stream>
 
@@ -798,12 +801,10 @@ TEST_F(FromArrowDeviceTest, StringViewType)
 
   cuda::stream_ref stream = cudf::get_default_stream();
   auto items              = view.buffer_views[1].data.as_binary_view;
-  auto d_items            = rmm::device_uvector<ArrowBinaryView>(input.length, stream);
-  CUDF_CUDA_TRY(cudaMemcpyAsync(d_items.data(),
-                                items,
-                                input.length * sizeof(ArrowBinaryView),
-                                cudaMemcpyDefault,
-                                stream.get()));
+  auto d_items            = cuda::device_buffer<ArrowBinaryView>(
+    stream, cudf::get_current_device_resource_ref(), input.length, cuda::no_init);
+  CUDF_CUDA_TRY(cudf::detail::memcpy_async(
+    d_items.data(), items, input.length * sizeof(ArrowBinaryView), stream));
   auto variadics     = std::vector<cuda::device_buffer<char>>();
   auto variadic_ptrs = std::vector<char*>();
   for (auto i = 0L; i < view.n_variadic_buffers; ++i) {
@@ -908,12 +909,10 @@ TEST_F(FromArrowDeviceTest, StringViewTypeWithProducerOwnedPrivateData)
 
   cuda::stream_ref stream = cudf::get_default_stream();
   auto items              = view.buffer_views[1].data.as_binary_view;
-  auto d_items            = rmm::device_uvector<ArrowBinaryView>(input->length, stream);
-  CUDF_CUDA_TRY(cudaMemcpyAsync(d_items.data(),
-                                items,
-                                input->length * sizeof(ArrowBinaryView),
-                                cudaMemcpyDefault,
-                                stream.get()));
+  auto d_items            = cuda::device_buffer<ArrowBinaryView>(
+    stream, cudf::get_current_device_resource_ref(), input->length, cuda::no_init);
+  CUDF_CUDA_TRY(cudf::detail::memcpy_async(
+    d_items.data(), items, input->length * sizeof(ArrowBinaryView), stream));
   auto variadics     = std::vector<cuda::device_buffer<char>>();
   auto variadic_ptrs = std::vector<char*>();
   for (auto i = 0L; i < view.n_variadic_buffers; ++i) {

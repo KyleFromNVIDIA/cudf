@@ -24,6 +24,7 @@
 
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/std/iterator>
 #include <cuda/stream>
@@ -92,13 +93,14 @@ struct remap_indices_dispatch_fn {
     auto const iota     = cuda::counting_iterator<cudf::size_type>{0};
 
     // create a map from the old key indices to the new ones
-    auto indices_map = rmm::device_uvector<size_type>(old_keys.size(), stream);
+    auto indices_map = cuda::device_buffer<size_type>(
+      stream, cudf::get_current_device_resource_ref(), old_keys.size(), cuda::no_init);
     create_indices_map_fn<T, decltype(keys_itr)> map_fn{
       *d_old_keys, keys_itr, keys_itr + new_keys.size(), d_sorted_indices};
     thrust::transform(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                       iota,
                       iota + old_keys.size(),
-                      indices_map.begin(),
+                      indices_map.data(),
                       map_fn);
 
     // map the old indices to the new set

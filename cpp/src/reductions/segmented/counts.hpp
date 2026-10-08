@@ -9,8 +9,7 @@
 #include <cudf/utilities/memory_resource.hpp>
 #include <cudf/utilities/span.hpp>
 
-#include <rmm/device_uvector.hpp>
-
+#include <cuda/buffer>
 #include <cuda/stream>
 
 namespace cudf {
@@ -31,10 +30,10 @@ namespace detail {
  * @param offsets Indices to segment boundaries
  * @param null_handling How null entries are processed within each segment
  * @param stream Used for device memory operations and kernel launches
- * @param mr Device memory resource used to allocate the returned column's device memory
+ * @param mr Device memory resource used to allocate the returned buffer's device memory
  * @return The number of elements in each segment
  */
-rmm::device_uvector<size_type> segmented_counts(bitmask_type const* null_mask,
+cuda::device_buffer<size_type> segmented_counts(bitmask_type const* null_mask,
                                                 bool has_nulls,
                                                 device_span<size_type const> offsets,
                                                 null_policy null_handling,

@@ -8,10 +8,11 @@
 #include <cudf/detail/utilities/cuda_memcpy.hpp>
 #include <cudf/detail/utilities/host_vector.hpp>
 #include <cudf/detail/utilities/vector_factories.hpp>
+#include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/resource_ref.hpp>
 
+#include <cuda/buffer>
 #include <cuda/stream>
 
 #include <type_traits>
@@ -43,7 +44,8 @@ class device_scalar {
   explicit device_scalar(
     cuda::stream_ref stream,
     rmm::device_async_resource_ref mr = cudf::get_current_device_resource_ref())
-    : _storage{1, stream, std::move(mr)}, bounce_buffer{make_pinned_vector<T>(1, stream)}
+    : _storage{stream, std::move(mr), 1, cuda::no_init},
+      bounce_buffer{make_pinned_vector<T>(1, stream)}
   {
   }
 
@@ -51,7 +53,8 @@ class device_scalar {
     T const& initial_value,
     cuda::stream_ref stream,
     rmm::device_async_resource_ref mr = cudf::get_current_device_resource_ref())
-    : _storage{1, stream, std::move(mr)}, bounce_buffer{make_pinned_vector<T>(1, stream)}
+    : _storage{stream, std::move(mr), 1, cuda::no_init},
+      bounce_buffer{make_pinned_vector<T>(1, stream)}
   {
     set_value_async(initial_value, stream);
   }
@@ -59,8 +62,10 @@ class device_scalar {
   device_scalar(device_scalar const& other,
                 cuda::stream_ref stream,
                 rmm::device_async_resource_ref mr = cudf::get_current_device_resource_ref())
-    : _storage{other._storage, stream, mr}, bounce_buffer{make_pinned_vector<T>(1, stream)}
+    : _storage{stream, mr, 1, cuda::no_init}, bounce_buffer{make_pinned_vector<T>(1, stream)}
   {
+    CUDF_CUDA_TRY(
+      cudf::detail::memcpy_async(_storage.data(), other._storage.data(), sizeof(T), stream));
   }
 
   [[nodiscard]] T value(cuda::stream_ref stream) const
@@ -88,7 +93,7 @@ class device_scalar {
   [[nodiscard]] T const* data() const noexcept { return _storage.data(); }
 
  private:
-  rmm::device_uvector<T> _storage;
+  cuda::device_buffer<T> _storage;
   mutable cudf::detail::host_vector<T> bounce_buffer;
 };
 

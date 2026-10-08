@@ -17,6 +17,7 @@
 #include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/std/utility>
@@ -33,14 +34,15 @@ namespace {
 using column_string_pairs = cudf::device_span<string_index_pair const>;
 
 template <typename OutputType>
-std::pair<std::vector<std::unique_ptr<column>>, rmm::device_uvector<int64_t>>
+std::pair<std::vector<std::unique_ptr<column>>, cuda::device_buffer<int64_t>>
 make_offsets_child_column_batch_async(std::vector<column_string_pairs> const& input,
                                       cuda::stream_ref stream,
                                       rmm::device_async_resource_ref mr)
 {
   auto const num_columns = input.size();
   std::vector<std::unique_ptr<column>> offsets_columns(num_columns);
-  rmm::device_uvector<int64_t> chars_sizes(num_columns, stream);
+  cuda::device_buffer<int64_t> chars_sizes(
+    stream, cudf::get_current_device_resource_ref(), num_columns, cuda::no_init);
   for (std::size_t idx = 0; idx < num_columns; ++idx) {
     auto const string_pairs = input[idx];
     auto const string_count = static_cast<size_type>(string_pairs.size());
@@ -87,11 +89,11 @@ std::vector<std::unique_ptr<column>> make_strings_column_batch(
   std::vector<cuda::device_buffer<std::byte>> null_masks;
   null_masks.reserve(num_columns);
 
-  rmm::device_uvector<size_type> d_valid_counts(num_columns, stream, mr);
+  cuda::device_buffer<size_type> d_valid_counts(stream, mr, num_columns, cuda::no_init);
   thrust::uninitialized_fill(
     rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-    d_valid_counts.begin(),
-    d_valid_counts.end(),
+    d_valid_counts.data(),
+    (d_valid_counts.data() + d_valid_counts.size()),
     0);
 
   for (std::size_t idx = 0; idx < num_columns; ++idx) {

@@ -20,6 +20,7 @@
 #include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/stream>
 #include <thrust/transform.h>
@@ -30,20 +31,17 @@
 namespace cudf::strings {
 namespace detail {
 
-/**
- * @copydoc create_string_vector_from_column
- */
-rmm::device_uvector<string_view> create_string_vector_from_column(
-  cudf::strings_column_view const input, cuda::stream_ref stream, rmm::device_async_resource_ref mr)
+namespace {
+void fill_string_views(cudf::strings_column_view const input,
+                       cudf::device_span<string_view> output,
+                       cuda::stream_ref stream)
 {
   auto d_strings = column_device_view::create(input.parent(), stream);
-
-  auto strings_vector = rmm::device_uvector<string_view>(input.size(), stream, mr);
 
   thrust::transform(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                     cuda::counting_iterator<size_type>{0},
                     cuda::counting_iterator<size_type>{input.size()},
-                    strings_vector.begin(),
+                    output.data(),
                     [d_strings = *d_strings] __device__(size_type idx) {
                       // placeholder for factory function that takes a span of string_views
                       auto const null_string_view = string_view{nullptr, 0};
@@ -54,7 +52,17 @@ rmm::device_uvector<string_view> create_string_vector_from_column(
                       auto const empty_string_view = string_view{};
                       return d_str.empty() ? empty_string_view : d_str;
                     });
+}
+}  // namespace
 
+/**
+ * @copydoc create_string_vector_from_column
+ */
+cuda::device_buffer<string_view> create_string_vector_from_column(
+  cudf::strings_column_view const input, cuda::stream_ref stream, rmm::device_async_resource_ref mr)
+{
+  auto strings_vector = cuda::device_buffer<string_view>(stream, mr, input.size(), cuda::no_init);
+  fill_string_views(input, {strings_vector.data(), strings_vector.size()}, stream);
   return strings_vector;
 }
 
@@ -197,7 +205,9 @@ rmm::device_uvector<string_view> create_string_vector_from_column(
   rmm::device_async_resource_ref mr)
 {
   CUDF_FUNC_RANGE();
-  return detail::create_string_vector_from_column(strings, stream, mr);
+  auto strings_vector = rmm::device_uvector<string_view>(strings.size(), stream, mr);
+  detail::fill_string_views(strings, {strings_vector.data(), strings_vector.size()}, stream);
+  return strings_vector;
 }
 
 int64_t get_offset64_threshold() { return detail::get_offset64_threshold(); }

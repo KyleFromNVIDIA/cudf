@@ -5,6 +5,7 @@
 
 #include "io_source.hpp"
 
+#include <cudf/detail/utilities/cuda_memcpy.hpp>
 #include <cudf/io/types.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
@@ -42,7 +43,8 @@ io_source_type get_io_source_type(std::string name)
 }
 
 io_source::io_source(std::string_view file_path, io_source_type type, cuda::stream_ref stream)
-  : pinned_buffer({pinned_memory_resource(), stream}), d_buffer{0, stream}
+  : pinned_buffer({pinned_memory_resource(), stream}),
+    d_buffer{stream, cudf::get_current_device_resource_ref(), 0, cuda::no_init}
 {
   std::string const file_name{file_path};
   auto const file_size = std::filesystem::file_size(file_name);
@@ -74,9 +76,12 @@ io_source::io_source(std::string_view file_path, io_source_type type, cuda::stre
     case io_source_type::DEVICE_BUFFER: {
       h_buffer.resize(file_size);
       file.read(h_buffer.data(), file_size);
-      d_buffer.resize(file_size, stream);
-      CUDF_CUDA_TRY(cudaMemcpyAsync(
-        d_buffer.data(), h_buffer.data(), file_size, cudaMemcpyDefault, stream.get()));
+      if (d_buffer.size() != file_size) {
+        d_buffer = cuda::device_buffer<std::byte>(
+          stream, d_buffer.memory_resource(), file_size, cuda::no_init);
+      }
+      CUDF_CUDA_TRY(
+        cudf::detail::memcpy_async(d_buffer.data(), h_buffer.data(), file_size, stream));
 
       source_info = cudf::io::source_info(d_buffer);
       break;

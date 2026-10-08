@@ -28,6 +28,7 @@
 #include <rmm/device_uvector.hpp>
 
 #include <cuda/atomic>
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/std/iterator>
@@ -293,19 +294,21 @@ std::unique_ptr<column> replace_character_parallel(strings_column_view const& in
 
   // Create a vector of every target position in the chars column.
   // These may also include overlapping targets which will be resolved later.
-  auto targets_positions = rmm::device_uvector<int64_t>(target_count, stream);
-  auto const copy_itr    = cuda::counting_iterator<int64_t>{chars_offset};
-  auto const copy_end    = cudf::detail::copy_if(
+  auto targets_positions_storage = cuda::device_buffer<int64_t>(
+    stream, cudf::get_current_device_resource_ref(), target_count, cuda::no_init);
+  auto const copy_itr = cuda::counting_iterator<int64_t>{chars_offset};
+  auto const copy_end = cudf::detail::copy_if(
     copy_itr,
     copy_itr + chars_bytes + chars_offset,
-    targets_positions.begin(),
+    targets_positions_storage.data(),
     [fn] __device__(int64_t idx) -> bool { return fn.is_target_within_row(idx); },
     stream);
 
   // adjust target count since the copy-if may have eliminated some invalid targets
-  target_count = std::min(std::distance(targets_positions.begin(), copy_end), target_count);
-  targets_positions.resize(target_count, stream);
-  auto d_positions = targets_positions.data();
+  target_count = std::min(std::distance(targets_positions_storage.data(), copy_end), target_count);
+  auto targets_positions = cudf::device_span<int64_t>{targets_positions_storage.data(),
+                                                      static_cast<std::size_t>(target_count)};
+  auto d_positions       = targets_positions.data();
 
   // create a vector of offsets to each string's set of target positions
   auto const targets_offsets = create_offsets_from_positions(
@@ -314,24 +317,26 @@ std::unique_ptr<column> replace_character_parallel(strings_column_view const& in
     cudf::detail::offsetalator_factory::make_input_iterator(targets_offsets->view());
 
   // compute the number of string segments produced by replace in each string
-  auto counts = rmm::device_uvector<size_type>(strings_count, stream);
+  auto counts = cuda::device_buffer<size_type>(
+    stream, cudf::get_current_device_resource_ref(), strings_count, cuda::no_init);
   thrust::transform(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                     cuda::counting_iterator<size_type>{0},
                     cuda::counting_iterator<size_type>{strings_count},
-                    counts.begin(),
+                    counts.data(),
                     cuda::proclaim_return_type<size_type>(
                       [fn, d_positions, d_targets_offsets] __device__(size_type idx) -> size_type {
                         return fn.count_strings(idx, d_positions, d_targets_offsets);
                       }));
 
   // create offsets from the counts
-  auto [offsets, total_strings] =
-    cudf::detail::make_offsets_child_column(counts.begin(), counts.end(), stream, mr);
+  auto [offsets, total_strings] = cudf::detail::make_offsets_child_column(
+    counts.data(), (counts.data() + counts.size()), stream, mr);
   auto const d_strings_offsets =
     cudf::detail::offsetalator_factory::make_input_iterator(offsets->view());
 
   // build a vector of all the positions for all the strings
-  auto indices   = rmm::device_uvector<string_index_pair>(total_strings, stream);
+  auto indices = cuda::device_buffer<string_index_pair>(
+    stream, cudf::get_current_device_resource_ref(), total_strings, cuda::no_init);
   auto d_indices = indices.data();
   auto d_sizes   = counts.data();  // reusing this vector to hold output sizes now
   thrust::for_each_n(

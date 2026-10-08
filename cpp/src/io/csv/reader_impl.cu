@@ -19,6 +19,7 @@
 #include <cudf/column/column_stream.hpp>
 #include <cudf/copying.hpp>
 #include <cudf/detail/iterator.cuh>
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/detail/utilities/cuda.cuh>
 #include <cudf/detail/utilities/cuda_memcpy.hpp>
 #include <cudf/detail/utilities/host_worker_pool.hpp>
@@ -63,7 +64,7 @@ using std::vector;
 
 using cudf::device_span;
 using cudf::host_span;
-using cudf::detail::make_device_uvector_async;
+using cudf::detail::make_device_buffer_async;
 
 namespace cudf {
 namespace io {
@@ -81,16 +82,19 @@ namespace {
  * elements.
  */
 class selected_rows_offsets {
-  rmm::device_uvector<uint64_t> all;
+  cuda::device_buffer<uint64_t> all;
   device_span<uint64_t const> selected;
 
  public:
-  selected_rows_offsets(rmm::device_uvector<uint64_t>&& data,
+  selected_rows_offsets(cuda::device_buffer<uint64_t>&& data,
                         device_span<uint64_t const> selected_span)
     : all{std::move(data)}, selected{selected_span}
   {
   }
-  explicit selected_rows_offsets(cuda::stream_ref stream) : all{0, stream}, selected{all} {}
+  explicit selected_rows_offsets(cuda::stream_ref stream)
+    : all{stream, cudf::get_current_device_resource_ref(), 0, cuda::no_init}, selected{all}
+  {
+  }
 
   operator device_span<uint64_t const>() const { return selected; }
   void shrink(size_t size)
@@ -201,16 +205,20 @@ std::vector<std::string> get_column_names(std::vector<char> const& row,
   return col_names;
 }
 
-template <typename C>
-void erase_except_last(C& container, cuda::stream_ref stream)
+template <typename T>
+void erase_except_last(device_span<T>& container, cuda::stream_ref stream)
 {
   cudf::detail::device_single_thread(
-    [span = device_span<typename C::value_type>{container}] __device__() mutable {
-      span.front() = span.back();
-    },
-    stream);
-  container.resize(1, stream);
+    [span = container] __device__() mutable { span.front() = span.back(); }, stream);
+  container = container.first(1);
 }
+
+struct csv_input_data {
+  cuda::device_buffer<char> storage;
+  std::size_t size;
+
+  operator device_span<char const>() const { return {storage.data(), size}; }
+};
 
 constexpr std::array<uint8_t, 3> UTF8_BOM = {0xEF, 0xBB, 0xBF};
 [[nodiscard]] bool has_utf8_bom(host_span<char const> data)
@@ -240,7 +248,7 @@ constexpr std::array<uint8_t, 3> UTF8_BOM = {0xEF, 0xBB, 0xBF};
  *  @param[in] stream CUDA stream used for device memory operations and kernel launches
  *  @return Input data and row offsets in the device memory
  */
-std::pair<rmm::device_uvector<char>, selected_rows_offsets> load_data_and_gather_row_offsets(
+std::pair<csv_input_data, selected_rows_offsets> load_data_and_gather_row_offsets(
   cudf::io::datasource* source,
   csv_reader_options const& reader_opts,
   parse_options const& parse_opts,
@@ -277,9 +285,38 @@ std::pair<rmm::device_uvector<char>, selected_rows_offsets> load_data_and_gather
   auto input_pos = byte_range_offset == 0 ? pos : pos - 1;
   uint64_t ctx   = 0;
 
-  rmm::device_uvector<char> d_data{0, stream};
-  d_data.reserve((load_whole_file) ? data_size : std::min(buffer_size * 2, max_input_size), stream);
-  rmm::device_uvector<uint64_t> all_row_offsets{0, stream};
+  cuda::device_buffer<char> data_storage{
+    stream,
+    cudf::get_current_device_resource_ref(),
+    (load_whole_file) ? data_size : std::min(buffer_size * 2, max_input_size),
+    cuda::no_init};
+  auto d_data      = device_span<char>{data_storage}.first(0);
+  auto resize_data = [&](std::size_t size) {
+    if (size > data_storage.size()) {
+      cuda::device_buffer<char> next{stream, data_storage.memory_resource(), size, cuda::no_init};
+      if (!d_data.empty()) {
+        CUDF_CUDA_TRY(
+          cudf::detail::memcpy_async(next.data(), d_data.data(), d_data.size(), stream));
+      }
+      data_storage = std::move(next);
+    }
+    d_data = device_span<char>{data_storage}.first(size);
+  };
+  cuda::device_buffer<uint64_t> row_offsets_storage{
+    stream, cudf::get_current_device_resource_ref(), 0, cuda::no_init};
+  auto all_row_offsets    = device_span<uint64_t>{row_offsets_storage};
+  auto resize_row_offsets = [&](std::size_t size) {
+    if (size > row_offsets_storage.size()) {
+      cuda::device_buffer<uint64_t> next{
+        stream, row_offsets_storage.memory_resource(), size, cuda::no_init};
+      if (!all_row_offsets.empty()) {
+        CUDF_CUDA_TRY(cudf::detail::memcpy_async(
+          next.data(), all_row_offsets.data(), all_row_offsets.size_bytes(), stream));
+      }
+      row_offsets_storage = std::move(next);
+    }
+    all_row_offsets = device_span<uint64_t>{row_offsets_storage}.first(size);
+  };
 
   auto const max_blocks =
     std::max<size_t>((buffer_size / cudf::io::csv::gpu::rowofs_block_bytes) + 1, 2);
@@ -289,7 +326,7 @@ std::pair<rmm::device_uvector<char>, selected_rows_offsets> load_data_and_gather
     auto const chunk_size = target_pos - pos;
 
     auto const previous_data_size = d_data.size();
-    d_data.resize(target_pos - input_pos, stream);
+    resize_data(target_pos - input_pos);
 
     auto const read_offset = byte_range_offset + input_pos + previous_data_size;
     auto const read_size   = target_pos - input_pos - previous_data_size;
@@ -345,7 +382,7 @@ std::pair<rmm::device_uvector<char>, selected_rows_offsets> load_data_and_gather
     size_t total_rows = ctx >> 2;
     if (total_rows > skip_rows) {
       // At least one row in range in this batch
-      all_row_offsets.resize(total_rows - skip_rows, stream);
+      resize_row_offsets(total_rows - skip_rows);
 
       cudf::detail::cuda_memcpy_async(
         device_span<uint64_t>(row_ctx.device_ptr(), row_ctx.size()).subspan(0, num_blocks),
@@ -380,7 +417,7 @@ std::pair<rmm::device_uvector<char>, selected_rows_offsets> load_data_and_gather
           // Keep one row out of range (used to infer length of previous row)
           auto new_row_offsets_size =
             all_row_offsets.size() - std::min(rows_out_of_range - 1, all_row_offsets.size());
-          all_row_offsets.resize(new_row_offsets_size, stream);
+          resize_row_offsets(new_row_offsets_size);
           // Implies we reached the end of the range
           break;
         }
@@ -409,7 +446,7 @@ std::pair<rmm::device_uvector<char>, selected_rows_offsets> load_data_and_gather
 
   auto const non_blank_row_offsets =
     io::csv::gpu::remove_blank_rows(parse_opts.view(), d_data, all_row_offsets, stream);
-  auto row_offsets = selected_rows_offsets{std::move(all_row_offsets), non_blank_row_offsets};
+  auto row_offsets = selected_rows_offsets{std::move(row_offsets_storage), non_blank_row_offsets};
 
   // Remove header rows and extract header
   auto const header_row_index = std::max<size_t>(header_rows, 1) - 1;
@@ -438,10 +475,10 @@ std::pair<rmm::device_uvector<char>, selected_rows_offsets> load_data_and_gather
   if (num_rows >= 0 && static_cast<size_t>(num_rows) < row_offsets.size() - 1) {
     row_offsets.shrink(num_rows + 1);
   }
-  return {std::move(d_data), std::move(row_offsets)};
+  return {csv_input_data{std::move(data_storage), d_data.size()}, std::move(row_offsets)};
 }
 
-std::pair<rmm::device_uvector<char>, selected_rows_offsets> select_data_and_row_offsets(
+std::pair<csv_input_data, selected_rows_offsets> select_data_and_row_offsets(
   cudf::io::datasource* source,
   csv_reader_options const& reader_opts,
   std::vector<char>& header,
@@ -466,7 +503,10 @@ std::pair<rmm::device_uvector<char>, selected_rows_offsets> select_data_and_row_
                "byte_range offset with header not supported");
 
   if (source->is_empty()) {
-    return {rmm::device_uvector<char>{0, stream}, selected_rows_offsets{stream}};
+    return {csv_input_data{cuda::device_buffer<char>{
+                             stream, cudf::get_current_device_resource_ref(), 0, cuda::no_init},
+                           0},
+            selected_rows_offsets{stream}};
   }
 
   std::optional<host_span<char const>> h_data;
@@ -602,7 +642,7 @@ void infer_column_types(parse_options const& parse_opts,
   auto const column_stats = cudf::io::csv::gpu::detect_column_types(
     parse_opts.view(),
     data,
-    make_device_uvector_async(column_flags, stream, cudf::get_current_device_resource_ref()),
+    make_device_buffer_async(column_flags, stream, cudf::get_current_device_resource_ref()),
     row_offsets,
     num_inferred_columns,
     stream);
@@ -641,7 +681,7 @@ void infer_column_types(parse_options const& parse_opts,
  */
 struct decode_result {
   std::vector<column_buffer> buffers;
-  std::vector<rmm::device_uvector<bool>> is_quoted_flags;
+  std::vector<cuda::device_buffer<bool>> is_quoted_flags;
 };
 
 decode_result decode_data(parse_options const& parse_opts,
@@ -679,29 +719,29 @@ decode_result decode_data(parse_options const& parse_opts,
   }
 
   // Allocate is_quoted_flags arrays for string columns to track which fields were quoted
-  std::vector<rmm::device_uvector<bool>> is_quoted_flags_storage;
+  std::vector<cuda::device_buffer<bool>> is_quoted_flags_storage;
   auto h_is_quoted_flags = cudf::detail::make_host_vector<bool*>(num_active_columns, stream);
   for (int i = 0; i < num_active_columns; ++i) {
     if (column_types[i].id() == type_id::STRING) {
-      is_quoted_flags_storage.emplace_back(cudf::detail::make_zeroed_device_uvector_async<bool>(
+      is_quoted_flags_storage.emplace_back(cudf::detail::make_zeroed_device_buffer_async<bool>(
         num_records, stream, cudf::get_current_device_resource_ref()));
       h_is_quoted_flags[i] = is_quoted_flags_storage.back().data();
     }
   }
 
-  auto d_valid_counts = cudf::detail::make_zeroed_device_uvector_async<size_type>(
+  auto d_valid_counts = cudf::detail::make_zeroed_device_buffer_async<size_type>(
     num_active_columns, stream, cudf::get_current_device_resource_ref());
 
   cudf::io::csv::gpu::decode_row_column_data(
     parse_opts.view(),
     data,
-    make_device_uvector_async(column_flags, stream, cudf::get_current_device_resource_ref()),
+    make_device_buffer_async(column_flags, stream, cudf::get_current_device_resource_ref()),
     row_offsets,
-    make_device_uvector_async(column_types, stream, cudf::get_current_device_resource_ref()),
-    make_device_uvector_async(h_data, stream, cudf::get_current_device_resource_ref()),
-    make_device_uvector_async(h_valid, stream, cudf::get_current_device_resource_ref()),
+    make_device_buffer_async(column_types, stream, cudf::get_current_device_resource_ref()),
+    make_device_buffer_async(h_data, stream, cudf::get_current_device_resource_ref()),
+    make_device_buffer_async(h_valid, stream, cudf::get_current_device_resource_ref()),
     d_valid_counts,
-    make_device_uvector_async(h_is_quoted_flags, stream, cudf::get_current_device_resource_ref()),
+    make_device_buffer_async(h_is_quoted_flags, stream, cudf::get_current_device_resource_ref()),
     stream);
 
   auto const h_valid_counts = cudf::detail::make_host_vector(d_valid_counts, stream);
@@ -1127,7 +1167,9 @@ cudf::detail::trie create_na_trie(char quotechar,
                                                           "nan",
                                                           "null"};
 
-  if (!reader_opts.is_enabled_na_filter()) { return cudf::detail::trie(0, stream); }
+  if (!reader_opts.is_enabled_na_filter()) {
+    return cudf::detail::trie(stream, cudf::get_current_device_resource_ref(), 0, cuda::no_init);
+  }
 
   std::vector<std::string> na_values = reader_opts.get_na_values();
   if (reader_opts.is_enabled_keep_default_na()) {

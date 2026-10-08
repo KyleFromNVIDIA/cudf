@@ -11,6 +11,7 @@
 #include <cudf/detail/nvtx/ranges.hpp>
 #include <cudf/detail/row_operator/lexicographic.cuh>
 #include <cudf/detail/search.hpp>
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/detail/utilities/cuda.cuh>
 #include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/dictionary/detail/merge.hpp>
@@ -211,7 +212,7 @@ struct side_index_generator {
  * (defaults to true)
  * @param[in] stream CUDA stream used for device memory operations and kernel launches.
  *
- * @return A device_uvector of merged indices
+ * @return A device buffer of merged indices
  */
 index_vector generate_merged_indices(table_view const& left_table,
                                      table_view const& right_table,
@@ -229,7 +230,8 @@ index_vector generate_merged_indices(table_view const& left_table,
   auto left_begin  = cudf::detail::make_counting_transform_iterator(0, left_gen);
   auto right_begin = cudf::detail::make_counting_transform_iterator(0, right_gen);
 
-  index_vector merged_indices(total_size, stream);
+  index_vector merged_indices(
+    stream, cudf::get_current_device_resource_ref(), total_size, cuda::no_init);
 
   auto const has_nulls =
     nullate::DYNAMIC{cudf::has_nulls(left_table) or cudf::has_nulls(right_table)};
@@ -237,7 +239,7 @@ index_vector generate_merged_indices(table_view const& left_table,
   auto lhs_device_view = table_device_view::create(left_table, stream);
   auto rhs_device_view = table_device_view::create(right_table, stream);
 
-  auto d_column_order = cudf::detail::make_device_uvector_async(
+  auto d_column_order = cudf::detail::make_device_buffer_async(
     column_order, stream, cudf::get_current_device_resource_ref());
 
   if (has_nulls) {
@@ -251,7 +253,7 @@ index_vector generate_merged_indices(table_view const& left_table,
       }
     }();
 
-    auto d_null_precedence = cudf::detail::make_device_uvector_async(
+    auto d_null_precedence = cudf::detail::make_device_buffer_async(
       new_null_precedence, stream, cudf::get_current_device_resource_ref());
 
     auto ineq_op = detail::row_lexicographic_tagged_comparator<true>(
@@ -290,7 +292,8 @@ index_vector generate_merged_indices_nested(table_view const& left_table,
   size_type const right_size = right_table.num_rows();
   size_type const total_size = left_size + right_size;
 
-  index_vector merged_indices(total_size, stream);
+  index_vector merged_indices(
+    stream, cudf::get_current_device_resource_ref(), total_size, cuda::no_init);
 
   auto const left_indices_col     = cudf::detail::lower_bound(right_table,
                                                           left_table,

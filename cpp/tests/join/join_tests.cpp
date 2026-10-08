@@ -53,7 +53,7 @@ using Table                         = cudf::table;
 constexpr cudf::size_type NoneValue = cudf::JoinNoMatch;
 enum class algorithm { HASH, HASH_PARTITIONED, STREAMING_HASH, SORT_MERGE, MERGE };
 
-void expect_match_counts_equal(rmm::device_uvector<cudf::size_type> const& actual_counts,
+void expect_match_counts_equal(cuda::device_buffer<cudf::size_type> const& actual_counts,
                                std::vector<cudf::size_type> const& expected_counts,
                                cuda::stream_ref stream)
 {

@@ -10,26 +10,27 @@
 #include <cudf/detail/null_mask.hpp>
 #include <cudf/detail/utilities/vector_factories.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <thrust/fill.h>
 
 namespace cudf::detail {
 
 template <typename Hasher>
-std::unique_ptr<rmm::device_uvector<size_type>> hash_join<Hasher>::make_match_counts(
+std::unique_ptr<cuda::device_buffer<size_type>> hash_join<Hasher>::make_match_counts(
   join_kind join,
   table_view const& left,
   cuda::stream_ref stream,
   rmm::device_async_resource_ref mr) const
 {
-  auto match_counts = std::make_unique<rmm::device_uvector<size_type>>(left.num_rows(), stream, mr);
+  auto match_counts =
+    std::make_unique<cuda::device_buffer<size_type>>(stream, mr, left.num_rows(), cuda::no_init);
 
   if (_is_empty) {
     thrust::fill(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                 match_counts->begin(),
-                 match_counts->end(),
+                 match_counts->data(),
+                 match_counts->data() + match_counts->size(),
                  join == join_kind::INNER_JOIN ? 0 : 1);
     return match_counts;
   }
@@ -80,7 +81,7 @@ std::unique_ptr<rmm::device_uvector<size_type>> hash_join<Hasher>::make_match_co
   return match_counts;
 }
 
-template std::unique_ptr<rmm::device_uvector<size_type>>
+template std::unique_ptr<cuda::device_buffer<size_type>>
 hash_join<hash_join_hasher>::make_match_counts(join_kind,
                                                cudf::table_view const&,
                                                cuda::stream_ref,

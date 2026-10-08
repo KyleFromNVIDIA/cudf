@@ -8,6 +8,7 @@
 #include <cudf_test/type_lists.hpp>
 
 #include <cudf/detail/utilities/batched_memcpy.hpp>
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/io/parquet.hpp>
 #include <cudf/utilities/memory_resource.hpp>
@@ -73,11 +74,11 @@ TEST(BatchedMemcpyTest, BasicTest)
     return data;
   });
   // Copy the vectors to device
-  std::vector<rmm::device_uvector<T1>> h_device_vecs;
+  std::vector<cuda::device_buffer<T1>> h_device_vecs;
   h_device_vecs.reserve(h_sources.size());
   std::transform(
     h_sources.begin(), h_sources.end(), std::back_inserter(h_device_vecs), [stream, mr](auto& vec) {
-      return cudf::detail::make_device_uvector_async(vec, stream, mr);
+      return cudf::detail::make_device_buffer_async(vec, stream, mr);
     });
   // Pointers to the source vectors
   std::vector<T1*> h_src_ptrs;
@@ -87,27 +88,27 @@ TEST(BatchedMemcpyTest, BasicTest)
       return static_cast<T1*>(vec.data());
     });
   // Copy the source data pointers to device
-  auto d_src_ptrs = cudf::detail::make_device_uvector_async(h_src_ptrs, stream, mr);
+  auto d_src_ptrs = cudf::detail::make_device_buffer_async(h_src_ptrs, stream, mr);
 
   // Total number of elements in all buffers
   auto const total_buff_len = std::accumulate(h_lens.cbegin(), h_lens.cend(), 0);
 
   // Create one giant buffer for destination
-  auto d_dst_data = cudf::detail::make_zeroed_device_uvector_async<T1>(total_buff_len, stream, mr);
+  auto d_dst_data = cudf::detail::make_zeroed_device_buffer_async<T1>(total_buff_len, stream, mr);
   // Pointers to destination buffers within the giant destination buffer
   std::vector<T1*> h_dst_ptrs(num_buffs);
   std::for_each(cuda::counting_iterator<std::size_t>{0},
                 cuda::counting_iterator{num_buffs},
                 [&](auto i) { return h_dst_ptrs[i] = d_dst_data.data() + h_lens_excl_sum[i]; });
   // Copy destination data pointers to device
-  auto d_dst_ptrs = cudf::detail::make_device_uvector_async(h_dst_ptrs, stream, mr);
+  auto d_dst_ptrs = cudf::detail::make_device_buffer_async(h_dst_ptrs, stream, mr);
 
   // Copy buffer size iterators (in bytes) to device
-  auto d_sizes_bytes = cudf::detail::make_device_uvector_async(h_sizes_bytes, stream, mr);
+  auto d_sizes_bytes = cudf::detail::make_device_buffer_async(h_sizes_bytes, stream, mr);
 
   // Run the batched memcpy
   cudf::detail::batched_memcpy_async(
-    d_src_ptrs.begin(), d_dst_ptrs.begin(), d_sizes_bytes.begin(), num_buffs, stream);
+    d_src_ptrs.data(), d_dst_ptrs.data(), d_sizes_bytes.data(), num_buffs, stream);
 
   // Expected giant destination buffer after the memcpy
   std::vector<T1> expected_buffer;
@@ -123,4 +124,47 @@ TEST(BatchedMemcpyTest, BasicTest)
   // Check if both vectors are equal
   EXPECT_TRUE(
     std::equal(expected_buffer.begin(), expected_buffer.end(), result_dst_buffer.begin()));
+}
+
+TEST(DeviceBufferFactories, ZeroedBuffers)
+{
+  auto const stream = cudf::get_default_stream();
+  auto const mr     = cudf::get_current_device_resource_ref();
+  for (auto const size : {std::size_t{0}, std::size_t{1}, std::size_t{257}}) {
+    for (auto const async : {false, true}) {
+      auto buffer = async ? cudf::detail::make_zeroed_device_buffer_async<int>(size, stream, mr)
+                          : cudf::detail::make_zeroed_device_buffer<int>(size, stream, mr);
+      std::vector<int> result(size, -1);
+      CUDF_CUDA_TRY(
+        cudf::detail::memcpy_async(result.data(), buffer.data(), size * sizeof(int), stream));
+      stream.sync();
+      EXPECT_EQ(result, std::vector<int>(size, 0));
+    }
+  }
+}
+
+TEST(DeviceBufferFactories, CopiesHostDataAndMovesStorage)
+{
+  auto const stream   = cudf::get_default_stream();
+  auto const mr       = cudf::get_current_device_resource_ref();
+  auto const expected = std::vector<int>{-17, 0, 42, 1001};
+  auto pinned         = cudf::detail::make_pinned_vector_async<int>(expected.size(), stream);
+  std::copy(expected.begin(), expected.end(), pinned.begin());
+  auto check = [&](cuda::device_buffer<int>&& buffer) {
+    auto const original_data = buffer.data();
+    auto moved               = std::move(buffer);
+    EXPECT_EQ(moved.data(), original_data);
+    EXPECT_EQ(moved.size(), expected.size());
+    std::vector<int> result(expected.size());
+    CUDF_CUDA_TRY(
+      cudf::detail::memcpy_async(result.data(), moved.data(), result.size() * sizeof(int), stream));
+    stream.sync();
+    EXPECT_EQ(result, expected);
+  };
+  check(cudf::detail::make_device_buffer_async(expected, stream, mr));
+  check(cudf::detail::make_device_buffer(expected, stream, mr));
+  check(cudf::detail::make_device_buffer_async(cudf::host_span<int>{pinned}, stream, mr));
+  check(cudf::detail::make_device_buffer(cudf::host_span<int const>{pinned}, stream, mr));
+  check(cudf::detail::make_device_buffer_async(pinned, stream, mr));
+  check(cudf::detail::make_device_buffer(pinned, stream, mr));
 }

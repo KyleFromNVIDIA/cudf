@@ -180,7 +180,7 @@ class sort_merge_join {
      * @return A device vector containing the mapping from processed table indices to unprocessed
      * table indices
      */
-    rmm::device_uvector<size_type> map_table_to_unprocessed(cuda::stream_ref stream) const;
+    cuda::device_buffer<size_type> map_table_to_unprocessed(cuda::stream_ref stream) const;
   };
 
   /**
@@ -201,7 +201,7 @@ class sort_merge_join {
      * @param preprocessed Preprocessed left table state
      */
     sort_merge_join_match_context(table_view left_table,
-                                  std::unique_ptr<rmm::device_uvector<size_type>> match_counts,
+                                  std::unique_ptr<cuda::device_buffer<size_type>> match_counts,
                                   preprocessed_table preprocessed)
       : join_match_context{left_table, std::move(match_counts)},
         preprocessed_left{std::move(preprocessed)}
@@ -210,9 +210,9 @@ class sort_merge_join {
   };
 
   preprocessed_table preprocessed_right;  ///< Preprocessed right table
-  std::unique_ptr<rmm::device_uvector<size_type>>
+  std::unique_ptr<cuda::device_buffer<size_type>>
     right_run_rows;  ///< First row of each key run; the first `num_right_runs` entries are valid
-  std::unique_ptr<rmm::device_uvector<size_type>>
+  std::unique_ptr<cuda::device_buffer<size_type>>
     right_run_offsets;  ///< Start of each run in sorted order; the first `num_right_runs + 1`
                         ///< entries are valid, including the row-count sentinel
   size_type num_right_runs{};   ///< Number of distinct key runs in the processed right table

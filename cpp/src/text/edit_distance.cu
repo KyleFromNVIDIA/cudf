@@ -20,10 +20,10 @@
 
 #include <nvtext/edit_distance.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
 #include <cooperative_groups.h>
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/std/functional>
 #include <cuda/stream>
@@ -251,18 +251,20 @@ std::unique_ptr<cudf::column> edit_distance(cudf::strings_column_view const& inp
   auto d_targets = cudf::column_device_view::create(targets.parent(), stream);
 
   // calculate the size of the compute-buffer
-  rmm::device_uvector<std::ptrdiff_t> offsets(input.size() + 1, stream);
+  cuda::device_buffer<std::ptrdiff_t> offsets(
+    stream, cudf::get_current_device_resource_ref(), input.size() + 1, cuda::no_init);
   thrust::transform(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                     cuda::counting_iterator<cudf::size_type>{0},
                     cuda::counting_iterator<cudf::size_type>{input.size()},
-                    offsets.begin(),
+                    offsets.data(),
                     calculate_compute_buffer_fn{*d_strings, *d_targets});
 
   // get the total size of the temporary compute buffer
   // and convert sizes to offsets in-place
-  auto const compute_size =
-    cudf::detail::sizes_to_offsets(offsets.begin(), offsets.end(), offsets.begin(), 0, stream, mr);
-  rmm::device_uvector<cudf::size_type> compute_buffer(compute_size, stream);
+  auto const compute_size = cudf::detail::sizes_to_offsets(
+    offsets.data(), (offsets.data() + offsets.size()), offsets.data(), 0, stream, mr);
+  cuda::device_buffer<cudf::size_type> compute_buffer(
+    stream, cudf::get_current_device_resource_ref(), compute_size, cuda::no_init);
   auto d_buffer = compute_buffer.data();
 
   auto results = cudf::make_fixed_width_column(

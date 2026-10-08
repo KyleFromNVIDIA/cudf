@@ -6,8 +6,11 @@
 #pragma once
 
 #include <cudf/column/column.hpp>
+#include <cudf/utilities/span.hpp>
 
-#include <rmm/device_uvector.hpp>
+#include <cuda/buffer>
+
+#include <utility>
 
 namespace cudf {
 namespace detail {
@@ -31,9 +34,28 @@ struct dremel_device_view {
  * @see get_dremel_data() for more info.
  */
 struct dremel_data {
-  rmm::device_uvector<size_type> dremel_offsets;
-  rmm::device_uvector<uint8_t> rep_level;
-  rmm::device_uvector<uint8_t> def_level;
+  dremel_data(cuda::device_buffer<size_type>&& offsets,
+              cuda::device_buffer<uint8_t>&& repetition_levels,
+              cuda::device_buffer<uint8_t>&& definition_levels,
+              std::size_t level_values_size,
+              size_type leaf_size,
+              uint8_t definition_level)
+    : dremel_offsets(std::move(offsets)),
+      rep_level_storage(std::move(repetition_levels)),
+      def_level_storage(std::move(definition_levels)),
+      rep_level(rep_level_storage.data(), level_values_size),
+      def_level(def_level_storage.data(), level_values_size),
+      leaf_data_size(leaf_size),
+      max_def_level(definition_level)
+  {
+  }
+
+  cuda::device_buffer<size_type> dremel_offsets;
+  cuda::device_buffer<uint8_t> rep_level_storage;
+  cuda::device_buffer<uint8_t> def_level_storage;
+  // Only the compacted prefixes contain valid levels; storage retains the original allocation.
+  device_span<uint8_t const> rep_level;
+  device_span<uint8_t const> def_level;
 
   size_type leaf_data_size;
   uint8_t max_def_level;

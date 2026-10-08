@@ -23,6 +23,7 @@
 #include <rmm/mr/polymorphic_allocator.hpp>
 
 #include <cuco/static_set.cuh>
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/std/iterator>
 #include <cuda/stream>
@@ -66,9 +67,12 @@ struct unique_keys_dispatch_fn {
     set.insert_async(iter, iter + all_keys.size(), stream.get());
 
     // retrieve the indices of all the unique keys
-    auto keys_indices = rmm::device_uvector<size_type>(all_keys.size(), stream, temp_mr);
-    auto keys_end     = set.retrieve_all(keys_indices.begin(), stream.get());
-    keys_indices.resize(cuda::std::distance(keys_indices.begin(), keys_end), stream);
+    auto keys_indices_storage =
+      cuda::device_buffer<size_type>(stream, temp_mr, all_keys.size(), cuda::no_init);
+    auto keys_end     = set.retrieve_all(keys_indices_storage.data(), stream.get());
+    auto keys_indices = cudf::device_span<size_type>{
+      keys_indices_storage.data(),
+      static_cast<std::size_t>(cuda::std::distance(keys_indices_storage.data(), keys_end))};
 
     // gather the unique keys using the keys_indices
     auto const oob_policy   = cudf::out_of_bounds_policy::DONT_CHECK;

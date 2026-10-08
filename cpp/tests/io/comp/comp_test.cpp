@@ -13,12 +13,13 @@
 #include <cudf_test/memory_resource_utilities.hpp>
 #include <cudf_test/testing_main.hpp>
 
+#include <cudf/detail/utilities/buffer_factories.hpp>
+#include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/io/detail/codec.hpp>
 #include <cudf/io/types.hpp>
 #include <cudf/utilities/default_stream.hpp>
 
 #include <rmm/device_buffer.hpp>
-#include <rmm/device_uvector.hpp>
 
 #include <cuda/buffer>
 #include <cuda/iterator>
@@ -85,7 +86,8 @@ struct DecompressTest
                                               compressed.data(),
                                               compressed.data() + compressed.size()};
     }
-    rmm::device_uvector<uint8_t> dst{decompressed.size(), stream};
+    cuda::device_buffer<uint8_t> dst{
+      stream, cudf::get_current_device_resource_ref(), decompressed.size(), cuda::no_init};
 
     cudf::detail::hostdevice_vector<device_span<uint8_t const>> inf_in(1, stream);
     inf_in[0] = {src.data(), src.size()};
@@ -100,8 +102,7 @@ struct DecompressTest
     inf_stat.host_to_device_async(stream);
 
     static_cast<Decompressor*>(this)->device_dispatch(inf_in, inf_out, inf_stat);
-    CUDF_CUDA_TRY(cudaMemcpyAsync(
-      decompressed.data(), dst.data(), dst.size(), cudaMemcpyDefault, stream.get()));
+    CUDF_CUDA_TRY(cudf::detail::memcpy_async(decompressed.data(), dst.data(), dst.size(), stream));
     inf_stat.device_to_host(stream);
     CUDF_EXPECTS(inf_stat[0].status == codec_status::SUCCESS, "Failure in device decompression");
 
@@ -477,10 +478,14 @@ void roundtrip_test(cudf::io::compression_type compression,
 
     auto const test_input = cudf::host_span<uint8_t const>{expected.data(), test_size};
 
-    auto d_comp = rmm::device_uvector<uint8_t>(
-      cudf::io::detail::max_compressed_size(compression, test_input.size()), stream, mr);
+    auto d_comp_storage = cuda::device_buffer<uint8_t>(
+      stream,
+      mr,
+      cudf::io::detail::max_compressed_size(compression, test_input.size()),
+      cuda::no_init);
+    auto d_comp = device_span<uint8_t>{d_comp_storage};
     {
-      auto const d_orig = cudf::detail::make_device_uvector_async(test_input, stream, mr);
+      auto const d_orig = cudf::detail::make_device_buffer_async(test_input, stream, mr);
       auto hd_srcs      = cudf::detail::hostdevice_vector<device_span<uint8_t const>>(1, stream);
       hd_srcs[0]        = d_orig;
       hd_srcs.host_to_device_async(stream);
@@ -498,10 +503,10 @@ void roundtrip_test(cudf::io::compression_type compression,
       });
       hd_stats.device_to_host(stream);
       ASSERT_EQ(hd_stats[0].status, codec_status::SUCCESS);
-      d_comp.resize(hd_stats[0].bytes_written, stream);
+      d_comp = d_comp.first(hd_stats[0].bytes_written);
     }
 
-    auto d_got = rmm::device_uvector<uint8_t>(test_input.size(), stream, mr);
+    auto d_got = cuda::device_buffer<uint8_t>(stream, mr, test_input.size(), cuda::no_init);
     {
       auto hd_srcs = cudf::detail::hostdevice_vector<device_span<uint8_t const>>(1, stream);
       hd_srcs[0]   = d_comp;

@@ -8,11 +8,11 @@
 #include "nested_json.hpp"
 
 #include <cudf/detail/nvtx/ranges.hpp>
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/io/detail/tokenize_json.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
 #include <cuda/functional>
@@ -79,7 +79,7 @@ void validate_token_stream(device_span<char const> d_input,
   CUDF_FUNC_RANGE();
   if (!options.is_strict_validation()) { return; }
 
-  rmm::device_uvector<bool> d_invalid = cudf::detail::make_zeroed_device_uvector_async<bool>(
+  auto d_invalid = cudf::detail::make_zeroed_device_buffer_async<bool>(
     tokens.size(), stream, cudf::get_current_device_resource_ref());
 
   using token_t = cudf::io::json::token_t;
@@ -277,7 +277,7 @@ void validate_token_stream(device_span<char const> d_input,
   });
 
   auto conditional_invalidout_it = cuda::tabulate_output_iterator(cuda::proclaim_return_type<void>(
-    [d_invalid = d_invalid.begin()] __device__(size_type i, bool x) -> void {
+    [d_invalid = d_invalid.data()] __device__(size_type i, bool x) -> void {
       if (x) { d_invalid[i] = true; }
     }));
   thrust::transform(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
@@ -295,7 +295,7 @@ void validate_token_stream(device_span<char const> d_input,
       return {(curr.second ? curr.first : op_result), prev.second | curr.second};
     });
   auto transform_op = cuda::proclaim_return_type<scan_type>(
-    [d_invalid = d_invalid.begin(), tokens = tokens.begin()] __device__(auto i) -> scan_type {
+    [d_invalid = d_invalid.data(), tokens = tokens.begin()] __device__(auto i) -> scan_type {
       if (d_invalid[i]) return {token_t::ErrorBegin, tokens[i] == token_t::LineEnd};
       return {static_cast<token_t>(tokens[i]), tokens[i] == token_t::LineEnd};
     });

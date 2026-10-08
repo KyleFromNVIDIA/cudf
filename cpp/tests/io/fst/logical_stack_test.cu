@@ -8,11 +8,12 @@
 #include <cudf_test/base_fixture.hpp>
 #include <cudf_test/testing_main.hpp>
 
+#include <cudf/detail/utilities/cuda_memcpy.hpp>
 #include <cudf/types.hpp>
 #include <cudf/utilities/error.hpp>
+#include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_uvector.hpp>
-
+#include <cuda/buffer>
 #include <cuda/stream>
 #include <cuda_runtime_api.h>
 
@@ -199,22 +200,20 @@ TEST_F(LogicalStackTest, GroundTruth)
                           std::back_inserter(stack_symbols),
                           std::back_inserter(stack_op_indexes));
 
-  rmm::device_uvector<SymbolT> d_stack_ops{stack_symbols.size(), stream_view};
-  rmm::device_uvector<SymbolOffsetT> d_stack_op_indexes{stack_op_indexes.size(), stream_view};
+  cuda::device_buffer<SymbolT> d_stack_ops{
+    stream_view, cudf::get_current_device_resource_ref(), stack_symbols.size(), cuda::no_init};
+  cuda::device_buffer<SymbolOffsetT> d_stack_op_indexes{
+    stream_view, cudf::get_current_device_resource_ref(), stack_op_indexes.size(), cuda::no_init};
   cudf::detail::hostdevice_vector<SymbolT> top_of_stack_gpu{string_size, stream_view};
   cudf::device_span<SymbolOffsetT> d_stack_op_idx_span{d_stack_op_indexes};
 
-  CUDF_CUDA_TRY(cudaMemcpyAsync(d_stack_ops.data(),
-                                stack_symbols.data(),
-                                stack_symbols.size() * sizeof(SymbolT),
-                                cudaMemcpyDefault,
-                                stream.get()));
+  CUDF_CUDA_TRY(cudf::detail::memcpy_async(
+    d_stack_ops.data(), stack_symbols.data(), stack_symbols.size() * sizeof(SymbolT), stream_view));
 
-  CUDF_CUDA_TRY(cudaMemcpyAsync(d_stack_op_indexes.data(),
-                                stack_op_indexes.data(),
-                                stack_op_indexes.size() * sizeof(SymbolOffsetT),
-                                cudaMemcpyDefault,
-                                stream.get()));
+  CUDF_CUDA_TRY(cudf::detail::memcpy_async(d_stack_op_indexes.data(),
+                                           stack_op_indexes.data(),
+                                           stack_op_indexes.size() * sizeof(SymbolOffsetT),
+                                           stream_view));
 
   // Run algorithm
   fst::sparse_stack_op_to_top_of_stack<fst::stack_op_support::NO_RESET_SUPPORT, StackLevelT>(

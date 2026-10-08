@@ -75,7 +75,8 @@ std::unique_ptr<cudf::column> tokenize_fn(cudf::size_type strings_count,
                                             stream,
                                             cudf::get_current_device_resource_ref());
   //  build a list of pointers to each token
-  rmm::device_uvector<string_index_pair> tokens(total_tokens, stream);
+  cuda::device_buffer<string_index_pair> tokens(
+    stream, cudf::get_current_device_resource_ref(), total_tokens, cuda::no_init);
   // now go get the tokens
   tokenizer.d_offsets =
     cudf::detail::offsetalator_factory::make_input_iterator(token_offsets->view());

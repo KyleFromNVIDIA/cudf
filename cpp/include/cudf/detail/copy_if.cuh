@@ -14,9 +14,9 @@
 #include <cudf/utilities/default_stream.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/std/iterator>
 #include <cuda/stream>
@@ -50,18 +50,18 @@ std::unique_ptr<table> copy_if(table_view const& input,
 
   if (0 == input.num_rows()) { return empty_like(input); }
 
-  auto indices     = rmm::device_uvector<size_type>(input.num_rows(), stream);
+  auto indices = cuda::device_buffer<size_type>(
+    stream, cudf::get_current_device_resource_ref(), input.num_rows(), cuda::no_init);
   auto const begin = cuda::counting_iterator<size_type>{0};
   auto const end   = begin + input.num_rows();
   auto const indices_end =
     thrust::copy_if(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                     begin,
                     end,
-                    indices.begin(),
+                    indices.data(),
                     filter);
 
-  auto const output_size =
-    static_cast<size_type>(cuda::std::distance(indices.begin(), indices_end));
+  auto const output_size = static_cast<size_type>(cuda::std::distance(indices.data(), indices_end));
 
   // nothing selected
   if (output_size == 0) { return empty_like(input); }

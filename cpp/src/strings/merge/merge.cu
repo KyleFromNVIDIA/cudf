@@ -12,6 +12,7 @@
 
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/stream>
 #include <thrust/transform.h>
@@ -26,7 +27,7 @@ std::unique_ptr<column> merge(strings_column_view const& lhs,
                               rmm::device_async_resource_ref mr)
 {
   using cudf::detail::side;
-  if (row_order.is_empty()) { return make_empty_column(type_id::STRING); }
+  if (row_order.empty()) { return make_empty_column(type_id::STRING); }
   auto const strings_count = static_cast<cudf::size_type>(row_order.size());
 
   auto const lhs_column = column_device_view::create(lhs.parent(), stream);
@@ -37,11 +38,12 @@ std::unique_ptr<column> merge(strings_column_view const& lhs,
   auto const begin = row_order.begin();
 
   // build vector of strings
-  rmm::device_uvector<string_index_pair> indices(strings_count, stream);
+  cuda::device_buffer<string_index_pair> indices(
+    stream, cudf::get_current_device_resource_ref(), strings_count, cuda::no_init);
   thrust::transform(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                     cuda::counting_iterator<size_type>{0},
                     cuda::counting_iterator<size_type>{strings_count},
-                    indices.begin(),
+                    indices.data(),
                     [d_lhs, d_rhs, begin] __device__(size_type idx) {
                       auto const [s, index] = begin[idx];
                       if (s == side::LEFT ? d_lhs.is_null(index) : d_rhs.is_null(index)) {

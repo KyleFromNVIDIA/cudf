@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2026, NVIDIA CORPORATION.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -8,6 +8,7 @@
 #include <cudf_test/column_wrapper.hpp>
 #include <cudf_test/type_lists.hpp>
 
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/fixed_point/fixed_point.hpp>
 #include <cudf/utilities/default_stream.hpp>
@@ -74,12 +75,12 @@ TEST_F(FixedPointTest, DecimalXXThrustOnDevice)
   using decimal32 = fixed_point<int32_t, Radix::BASE_10>;
 
   std::vector<decimal32> vec1(1000, decimal32{1, scale_type{-2}});
-  auto d_vec1 = cudf::detail::make_device_uvector(
+  auto d_vec1 = cudf::detail::make_device_buffer(
     vec1, cudf::get_default_stream(), cudf::get_current_device_resource_ref());
 
   auto const sum = thrust::reduce(rmm::exec_policy_nosync(cudf::get_default_stream()),
-                                  std::cbegin(d_vec1),
-                                  std::cend(d_vec1),
+                                  d_vec1.data(),
+                                  d_vec1.data() + d_vec1.size(),
                                   decimal32{0, scale_type{-2}});
 
   EXPECT_EQ(static_cast<int32_t>(sum), 1000);
@@ -88,27 +89,28 @@ TEST_F(FixedPointTest, DecimalXXThrustOnDevice)
   //       change inclusive scan to run on device (avoid copying to host)
   thrust::inclusive_scan(std::cbegin(vec1), std::cend(vec1), std::begin(vec1));
 
-  d_vec1 = cudf::detail::make_device_uvector(
+  d_vec1 = cudf::detail::make_device_buffer(
     vec1, cudf::get_default_stream(), cudf::get_current_device_resource_ref());
 
   std::vector<int32_t> vec2(1000);
   std::iota(std::begin(vec2), std::end(vec2), 1);
 
   auto const res1 = thrust::reduce(rmm::exec_policy_nosync(cudf::get_default_stream()),
-                                   std::cbegin(d_vec1),
-                                   std::cend(d_vec1),
+                                   d_vec1.data(),
+                                   d_vec1.data() + d_vec1.size(),
                                    decimal32{0, scale_type{-2}});
 
   auto const res2 = std::accumulate(std::cbegin(vec2), std::cend(vec2), 0);
 
   EXPECT_EQ(static_cast<int32_t>(res1), res2);
 
-  rmm::device_uvector<int32_t> d_vec3(1000, cudf::get_default_stream());
+  cuda::device_buffer<int32_t> d_vec3(
+    cudf::get_default_stream(), cudf::get_current_device_resource_ref(), 1000, cuda::no_init);
 
   thrust::transform(rmm::exec_policy_nosync(cudf::get_default_stream()),
-                    std::cbegin(d_vec1),
-                    std::cend(d_vec1),
-                    std::begin(d_vec3),
+                    d_vec1.data(),
+                    d_vec1.data() + d_vec1.size(),
+                    d_vec3.data(),
                     cast_to_int32_fn{});
 
   auto vec3 = cudf::detail::make_std_vector(d_vec3, cudf::get_default_stream());

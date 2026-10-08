@@ -9,9 +9,9 @@
 #include <cudf/types.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/stream>
 #include <thrust/for_each.h>
@@ -166,30 +166,32 @@ void labels_to_offsets(InputIterator labels_begin,
 
   // This stores the unique label values.
   // Given the example above, we will have this array containing [0, 1, 4].
-  auto list_indices = rmm::device_uvector<OutputType>(num_segments, stream);
+  auto list_indices = cuda::device_buffer<OutputType>(
+    stream, cudf::get_current_device_resource_ref(), num_segments, cuda::no_init);
 
   // Stores the non-zero segment sizes.
   // Given the example above, we will have this array containing [4, 2, 4].
-  auto list_sizes = rmm::device_uvector<OutputType>(num_segments, stream);
+  auto list_sizes = cuda::device_buffer<OutputType>(
+    stream, cudf::get_current_device_resource_ref(), num_segments, cuda::no_init);
 
   // Count the numbers of labels in the each segment.
   auto const end = cudf::detail::reduce_by_key(labels_begin,  // keys
                                                labels_end,
                                                cuda::make_constant_iterator<OutputType>(1),
-                                               list_indices.begin(),  // output unique label values
-                                               list_sizes.begin(),    // count for each label
+                                               list_indices.data(),  // output unique label values
+                                               list_sizes.data(),    // count for each label
                                                cuda::std::plus<OutputType>(),
                                                stream);
 
-  auto const num_non_empty_segments = cuda::std::distance(list_indices.begin(), end.first);
+  auto const num_non_empty_segments = cuda::std::distance(list_indices.data(), end.first);
 
   // Scatter segment sizes into the end position of their corresponding segment indices.
   // Given the example above, we scatter [4, 2, 4] by the scatter map [0, 1, 4], resulting
   // output = [4, 2, 0, 0, 4, 0].
   thrust::scatter(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                  list_sizes.begin(),
-                  list_sizes.begin() + num_non_empty_segments,
-                  list_indices.begin(),
+                  list_sizes.data(),
+                  list_sizes.data() + num_non_empty_segments,
+                  list_indices.data(),
                   offsets_begin);
 
   // Generate offsets from sizes.

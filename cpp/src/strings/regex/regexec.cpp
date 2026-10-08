@@ -14,6 +14,7 @@
 
 #include <rmm/device_buffer.hpp>
 
+#include <cuda/buffer>
 #include <cuda/stream>
 
 #include <functional>
@@ -60,8 +61,11 @@ std::unique_ptr<reprog_device, std::function<void(reprog_device*)>> reprog_devic
   auto h_buffer =
     cudf::detail::make_host_vector<u_char>(memsize, stream);  // copy everything into here;
   auto h_ptr    = h_buffer.data();                            // this is our running host ptr;
-  auto d_buffer = new rmm::device_uvector<u_char>(memsize, stream);  // output device memory;
-  auto d_ptr    = d_buffer->data();                                  // running device pointer
+  auto d_buffer = new cuda::device_buffer<u_char>(stream,
+                                                  cudf::get_current_device_resource_ref(),
+                                                  memsize,
+                                                  cuda::no_init);  // output device memory;
+  auto d_ptr    = d_buffer->data();                                // running device pointer
 
   // create our device object; this is managed separately and returned to the caller
   auto* d_prog = new reprog_device(h_prog);
