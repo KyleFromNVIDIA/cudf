@@ -7,16 +7,19 @@
 #include <cudf_test/debug_utilities.hpp>
 
 #include <cudf/detail/get_value.cuh>
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/dictionary/dictionary_column_view.hpp>
 #include <cudf/lists/lists_column_view.hpp>
 #include <cudf/strings/convert/convert_datetime.hpp>
 #include <cudf/structs/structs_column_view.hpp>
 #include <cudf/utilities/bit.hpp>
 #include <cudf/utilities/default_stream.hpp>
+#include <cudf/utilities/memory_resource.hpp>
 #include <cudf/utilities/type_dispatcher.hpp>
 
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <thrust/transform.h>
 
@@ -159,7 +162,8 @@ std::string nested_offsets_to_string(NestedColumnView const& c,
 
   // the first offset value to normalize everything against
   size_type first = cudf::detail::get_value<size_type>(offsets, c.offset(), stream);
-  rmm::device_uvector<size_type> shifted_offsets(output_size, stream, mr.get_temporary_mr());
+  cuda::device_buffer<size_type> shifted_offsets(
+    stream, mr.get_temporary_mr(), output_size, cuda::no_init);
 
   // normalize the offset values for the column offset
   size_type const* d_offsets = offsets.head<size_type>() + c.offset();
@@ -167,7 +171,7 @@ std::string nested_offsets_to_string(NestedColumnView const& c,
     rmm::exec_policy_nosync(stream, mr.get_temporary_mr()),
     d_offsets,
     d_offsets + output_size,
-    shifted_offsets.begin(),
+    shifted_offsets.data(),
     [first] __device__(int32_t offset) { return static_cast<size_type>(offset - first); });
 
   auto const h_shifted_offsets = cudf::detail::make_host_vector(shifted_offsets, stream);

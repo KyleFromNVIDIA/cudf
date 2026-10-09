@@ -7,8 +7,11 @@
 
 #include "text/detail/cp_data.h"
 
+#include <cudf/utilities/memory_resource.hpp>
+
 #include <rmm/device_uvector.hpp>
 
+#include <cuda/buffer>
 #include <cuda/stream>
 
 #include <cstdint>
@@ -103,14 +106,14 @@ __device__ constexpr bool is_head_byte(unsigned char utf8_byte) { return (utf8_b
  *
  * @param stream CUDA stream used for device memory operations and kernel launches.
  */
-rmm::device_uvector<codepoint_metadata_type> get_codepoint_metadata(cuda::stream_ref stream);
+cuda::device_buffer<codepoint_metadata_type> get_codepoint_metadata(cuda::stream_ref stream);
 
 /**
  * @brief Retrieve the auxiliary code point metadata table.
  *
  * @param stream CUDA stream used for device memory operations and kernel launches.
  */
-rmm::device_uvector<aux_codepoint_data_type> get_aux_codepoint_data(cuda::stream_ref stream);
+cuda::device_buffer<aux_codepoint_data_type> get_aux_codepoint_data(cuda::stream_ref stream);
 
 }  // namespace detail
 }  // namespace nvtext

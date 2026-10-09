@@ -8,7 +8,9 @@
 #include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/types.hpp>
 #include <cudf/utilities/error.hpp>
+#include <cudf/utilities/memory_resource.hpp>
 
+#include <cuda/buffer>
 #include <cuda/stream>
 
 #include <functional>
@@ -76,7 +78,7 @@ create_device_view_from_view(ColumnView const& source,
   // require setting some internal device pointers before being copied
   // from CPU to device.
   auto const descendant_storage =
-    new rmm::device_uvector<char>(descendant_storage_bytes, stream, mr);
+    new cuda::device_buffer<char>(stream, mr, descendant_storage_bytes, cuda::no_init);
 
   auto deleter = [descendant_storage](ColumnDeviceView* v) {
     v->destroy();

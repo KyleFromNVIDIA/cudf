@@ -14,6 +14,7 @@
 
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <thrust/gather.h>
 #include <thrust/transform_scan.h>
@@ -235,15 +236,15 @@ void reader_impl::setup_next_subpass(read_mode mode)
   // indices into the pass.pages array that represents the subset of pages
   // for column N to use for the subpass.
   auto [page_indices, total_pages, total_expected_size] =
-    [&]() -> std::tuple<rmm::device_uvector<page_span>, size_t, size_t> {
+    [&]() -> std::tuple<cuda::device_buffer<page_span>, size_t, size_t> {
     if (!pass.has_compressed_data || _input_pass_read_limit == 0) {
-      rmm::device_uvector<page_span> page_indices(
-        num_columns, _stream, cudf::get_current_device_resource_ref());
+      cuda::device_buffer<page_span> page_indices(
+        _stream, cudf::get_current_device_resource_ref(), num_columns, cuda::no_init);
       auto iter = cuda::counting_iterator<size_t>{0};
       thrust::transform(rmm::exec_policy_nosync(_stream, cudf::get_current_device_resource_ref()),
                         iter,
                         iter + num_columns,
-                        page_indices.begin(),
+                        page_indices.data(),
                         get_page_span_by_column{pass.page_offsets});
       return {std::move(page_indices), pass.pages.size(), size_t{0}};
     }
@@ -252,7 +253,8 @@ void reader_impl::setup_next_subpass(read_mode mode)
     // as subpasses get decoded, the initial estimates we have for list row counts
     // get updated with accurate data, so regenerate cumulative size info and row
     // indices
-    rmm::device_uvector<cumulative_page_info> c_info(pass.pages.size(), _stream);
+    cuda::device_buffer<cumulative_page_info> c_info(
+      _stream, cudf::get_current_device_resource_ref(), pass.pages.size(), cuda::no_init);
     auto page_keys = make_page_key_iterator(pass.pages);
     auto page_size = cuda::transform_iterator(pass.pages.d_begin(), get_page_input_size{});
     thrust::inclusive_scan_by_key(
@@ -260,7 +262,7 @@ void reader_impl::setup_next_subpass(read_mode mode)
       page_keys,
       page_keys + pass.pages.size(),
       page_size,
-      c_info.begin(),
+      c_info.data(),
       cuda::std::equal_to{},
       cumulative_page_sum{});
 
@@ -310,14 +312,16 @@ void reader_impl::setup_next_subpass(read_mode mode)
   // (pass) pages
   else {
     subpass.page_buf       = cudf::detail::hostdevice_vector<PageInfo>(total_pages, _stream);
-    subpass.page_src_index = rmm::device_uvector<size_t>(total_pages, _stream);
-    auto iter              = cuda::counting_iterator<size_t>{0};
-    rmm::device_uvector<size_t> dst_offsets(num_columns + 1, _stream);
+    subpass.page_src_index = cuda::device_buffer<size_t>(
+      _stream, cudf::get_current_device_resource_ref(), total_pages, cuda::no_init);
+    auto iter = cuda::counting_iterator<size_t>{0};
+    cuda::device_buffer<size_t> dst_offsets(
+      _stream, cudf::get_current_device_resource_ref(), num_columns + 1, cuda::no_init);
     thrust::transform_exclusive_scan(
       rmm::exec_policy_nosync(_stream, cudf::get_current_device_resource_ref()),
       iter,
       iter + num_columns + 1,
-      dst_offsets.begin(),
+      dst_offsets.data(),
       get_span_size_by_index{page_indices},
       0,
       cuda::std::plus<size_t>{});
@@ -587,7 +591,8 @@ void reader_impl::compute_output_chunks_for_subpass()
   }
 
   // generate row_indices and cumulative output sizes for all pages
-  rmm::device_uvector<cumulative_page_info> c_info(subpass.pages.size(), _stream);
+  cuda::device_buffer<cumulative_page_info> c_info(
+    _stream, cudf::get_current_device_resource_ref(), subpass.pages.size(), cuda::no_init);
   auto page_input = cuda::transform_iterator(subpass.pages.device_begin(), get_page_output_size{});
   auto page_keys  = make_page_key_iterator(subpass.pages);
   thrust::inclusive_scan_by_key(
@@ -595,7 +600,7 @@ void reader_impl::compute_output_chunks_for_subpass()
     page_keys,
     page_keys + subpass.pages.size(),
     page_input,
-    c_info.begin(),
+    c_info.data(),
     cuda::std::equal_to{},
     cumulative_page_sum{});
   auto iter = cuda::counting_iterator<size_t>{0};

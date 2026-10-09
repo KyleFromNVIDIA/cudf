@@ -39,10 +39,11 @@ Mark Adler    madler@alumni.caltech.edu
 
 #include <cudf/detail/nvtx/ranges.hpp>
 #include <cudf/detail/utilities/vector_factories.hpp>
+#include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/std/algorithm>
 #include <cuda/std/cmath>
@@ -1206,15 +1207,16 @@ sorted_codec_parameters sort_tasks(device_span<device_span<uint8_t const> const>
   CUDF_FUNC_RANGE();
   auto const output_mr = mr.get_output_mr();
   auto const temp_mr   = mr.get_temporary_mr();
-  rmm::device_uvector<std::size_t> order(inputs.size(), stream, output_mr);
-  thrust::sequence(rmm::exec_policy_nosync(stream, temp_mr), order.begin(), order.end());
+  cuda::device_buffer<std::size_t> order(stream, output_mr, inputs.size(), cuda::no_init);
+  thrust::sequence(
+    rmm::exec_policy_nosync(stream, temp_mr), order.data(), (order.data() + order.size()));
 
   // Precompute costs to avoid repeated computation during sorting
-  rmm::device_uvector<double> costs(inputs.size(), stream, temp_mr);
+  cuda::device_buffer<double> costs(stream, temp_mr, inputs.size(), cuda::no_init);
   thrust::transform(rmm::exec_policy_nosync(stream, temp_mr),
                     cuda::make_zip_iterator(inputs.begin(), outputs.begin()),
                     cuda::make_zip_iterator(inputs.end(), outputs.end()),
-                    costs.begin(),
+                    costs.data(),
                     [task_type] __device__(auto const& input_output_pair) {
                       auto const& input  = cuda::std::get<0>(input_output_pair);
                       auto const& output = cuda::std::get<1>(input_output_pair);
@@ -1222,27 +1224,27 @@ sorted_codec_parameters sort_tasks(device_span<device_span<uint8_t const> const>
                     });
 
   thrust::sort(rmm::exec_policy_nosync(stream, temp_mr),
-               order.begin(),
-               order.end(),
+               order.data(),
+               (order.data() + order.size()),
                [costs = costs.data()] __device__(std::size_t a, std::size_t b) {
                  return costs[a] > costs[b];
                });
 
-  auto sorted_inputs =
-    rmm::device_uvector<device_span<uint8_t const>>(inputs.size(), stream, output_mr);
+  cuda::device_buffer<device_span<uint8_t const>> sorted_inputs(
+    stream, output_mr, inputs.size(), cuda::no_init);
   thrust::gather(rmm::exec_policy_nosync(stream, temp_mr),
-                 order.begin(),
-                 order.end(),
+                 order.data(),
+                 (order.data() + order.size()),
                  inputs.begin(),
-                 sorted_inputs.begin());
+                 sorted_inputs.data());
 
-  auto sorted_outputs =
-    rmm::device_uvector<device_span<uint8_t>>(outputs.size(), stream, output_mr);
+  cuda::device_buffer<device_span<uint8_t>> sorted_outputs(
+    stream, output_mr, outputs.size(), cuda::no_init);
   thrust::gather(rmm::exec_policy_nosync(stream, temp_mr),
-                 order.begin(),
-                 order.end(),
+                 order.data(),
+                 (order.data() + order.size()),
                  outputs.begin(),
-                 sorted_outputs.begin());
+                 sorted_outputs.data());
 
   return {std::move(sorted_inputs), std::move(sorted_outputs), std::move(order)};
 }
@@ -1344,7 +1346,7 @@ void copy_results_to_original_order(device_span<codec_exec_result const> sorted_
   thrust::scatter(rmm::exec_policy_nosync(stream, mr.get_temporary_mr()),
                   sorted_results.begin(),
                   sorted_results.end(),
-                  order.begin(),
+                  order.data(),
                   original_results.begin());
 }
 

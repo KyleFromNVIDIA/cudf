@@ -133,10 +133,11 @@ std::unique_ptr<cudf::column> normalize_spaces(cudf::strings_column_view const& 
  * Build the code point metadata table in device memory
  * using the vector pieces from codepoint_metadata.ah
  */
-rmm::device_uvector<codepoint_metadata_type> get_codepoint_metadata(cuda::stream_ref stream)
+cuda::device_buffer<codepoint_metadata_type> get_codepoint_metadata(cuda::stream_ref stream)
 {
-  auto table_vector = rmm::device_uvector<codepoint_metadata_type>(codepoint_metadata_size, stream);
-  auto table        = table_vector.data();
+  auto table_vector = cuda::device_buffer<codepoint_metadata_type>(
+    stream, cudf::get_current_device_resource_ref(), codepoint_metadata_size, cuda::no_init);
+  auto table = table_vector.data();
   thrust::fill(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                table + cp_section1_end,
                table + codepoint_metadata_size,
@@ -157,10 +158,11 @@ rmm::device_uvector<codepoint_metadata_type> get_codepoint_metadata(cuda::stream
  * Build the aux code point data table in device memory
  * using the vector pieces from codepoint_metadata.ah
  */
-rmm::device_uvector<aux_codepoint_data_type> get_aux_codepoint_data(cuda::stream_ref stream)
+cuda::device_buffer<aux_codepoint_data_type> get_aux_codepoint_data(cuda::stream_ref stream)
 {
-  auto table_vector = rmm::device_uvector<aux_codepoint_data_type>(aux_codepoint_data_size, stream);
-  auto table        = table_vector.data();
+  auto table_vector = cuda::device_buffer<aux_codepoint_data_type>(
+    stream, cudf::get_current_device_resource_ref(), aux_codepoint_data_size, cuda::no_init);
+  auto table = table_vector.data();
   thrust::fill(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                table + aux_section1_end,
                table + aux_codepoint_data_size,
@@ -194,8 +196,8 @@ std::unique_ptr<cudf::column> normalize_spaces(cudf::strings_column_view const& 
 }
 
 struct character_normalizer::character_normalizer_impl {
-  rmm::device_uvector<uint32_t> cp_metadata;
-  rmm::device_uvector<aux_codepoint_data_type> aux_table;
+  cuda::device_buffer<uint32_t> cp_metadata;
+  cuda::device_buffer<aux_codepoint_data_type> aux_table;
   bool do_lower_case;
   std::unique_ptr<cudf::column> special_tokens;
   rmm::device_uvector<cudf::string_view> special_tokens_view;
@@ -205,8 +207,8 @@ struct character_normalizer::character_normalizer_impl {
     return special_tokens_view;
   }
 
-  character_normalizer_impl(rmm::device_uvector<uint32_t>&& cp_metadata,
-                            rmm::device_uvector<aux_codepoint_data_type>&& aux_table,
+  character_normalizer_impl(cuda::device_buffer<uint32_t>&& cp_metadata,
+                            cuda::device_buffer<aux_codepoint_data_type>&& aux_table,
                             bool do_lower_case,
                             std::unique_ptr<cudf::column>&& special_tokens,
                             rmm::device_uvector<cudf::string_view>&& special_tokens_view)
@@ -416,13 +418,14 @@ CUDF_KERNEL void data_normalizer_kernel(
  * @return The sizes of each output row
  */
 template <typename OffsetType>
-rmm::device_uvector<cudf::size_type> compute_sizes(cudf::device_span<uint32_t const> d_normalized,
+cuda::device_buffer<cudf::size_type> compute_sizes(cudf::device_span<uint32_t const> d_normalized,
                                                    OffsetType offsets,
                                                    int64_t offset,
                                                    cudf::size_type size,
                                                    cuda::stream_ref stream)
 {
-  auto output_sizes = rmm::device_uvector<cudf::size_type>(size, stream);
+  auto output_sizes = cuda::device_buffer<cudf::size_type>(
+    stream, cudf::get_current_device_resource_ref(), size, cuda::no_init);
 
   auto d_data = d_normalized.data();
 
@@ -440,7 +443,7 @@ rmm::device_uvector<cudf::size_type> compute_sizes(cudf::device_span<uint32_t co
     }));
 
   // DeviceSegmentedReduce is used to compute the size of each output row
-  auto d_out = output_sizes.begin();
+  auto d_out = output_sizes.data();
   auto temp  = std::size_t{0};
   if (offset == 0) {
     cub::DeviceSegmentedReduce::Sum(
@@ -537,7 +540,8 @@ std::unique_ptr<cudf::column> normalize_characters(cudf::strings_column_view con
                             ? cudf::strings::detail::get_character_flags_table(stream)
                             : nullptr;
 
-  auto d_normalized = rmm::device_uvector<uint32_t>(max_new_char_total, stream);
+  auto d_normalized = cuda::device_buffer<uint32_t>(
+    stream, cudf::get_current_device_resource_ref(), max_new_char_total, cuda::no_init);
   data_normalizer_kernel<<<grid.num_blocks, grid.num_threads_per_block, 0, stream.get()>>>(
     d_input_chars,
     chars_size,
@@ -568,12 +572,12 @@ std::unique_ptr<cudf::column> normalize_characters(cudf::strings_column_view con
 
   // convert the sizes to offsets
   auto [offsets, total_size] = cudf::strings::detail::make_offsets_child_column(
-    output_sizes.begin(), output_sizes.end(), stream, mr);
+    output_sizes.data(), (output_sizes.data() + output_sizes.size()), stream, mr);
 
   // create output chars by calling remove_copy(0) on the bytes in d_normalized
   auto chars       = rmm::device_uvector<char>(total_size, stream, mr);
-  auto const begin = reinterpret_cast<char const*>(d_normalized.begin());
-  auto const end   = reinterpret_cast<char const*>(d_normalized.end());
+  auto const begin = reinterpret_cast<char const*>(d_normalized.data());
+  auto const end   = reinterpret_cast<char const*>((d_normalized.data() + d_normalized.size()));
   remove_copy_safe(begin, end, chars.data(), 0, stream);
 
   return cudf::make_strings_column(input.size(),

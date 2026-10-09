@@ -21,6 +21,7 @@
 #include <cuco/operator.hpp>
 #include <cuco/static_set.cuh>
 #include <cuda/atomic>
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/std/tuple>
@@ -138,10 +139,10 @@ compute_row_frequencies(table_view const& input,
   std::size_t const num_rows = input.num_rows();
 
   // Construct a vector to store reduced counts and init to zero
-  rmm::device_uvector<histogram_count_type> reduction_results(num_rows, stream, mr);
+  cuda::device_buffer<histogram_count_type> reduction_results(stream, mr, num_rows, cuda::no_init);
   thrust::uninitialized_fill(rmm::exec_policy_nosync(stream, temp_mr),
-                             reduction_results.begin(),
-                             reduction_results.end(),
+                             reduction_results.data(),
+                             (reduction_results.data() + reduction_results.size()),
                              histogram_count_type{0});
 
   // Construct a hash set
@@ -168,7 +169,7 @@ compute_row_frequencies(table_view const& input,
     [set_ref = row_set_ref,
      increments =
        partial_counts.has_value() ? partial_counts.value().begin<histogram_count_type>() : nullptr,
-     counts = reduction_results.begin()] __device__(auto const idx) mutable {
+     counts = reduction_results.data()] __device__(auto const idx) mutable {
       auto const [inserted_idx_ptr, _] = set_ref.insert_and_find(idx);
       cuda::atomic_ref<histogram_count_type, cuda::thread_scope_device> count_ref{
         counts[*inserted_idx_ptr]};
@@ -187,7 +188,7 @@ compute_row_frequencies(table_view const& input,
 
   // Copy row indices and counts to the output if counts are non-zero
   auto const input_it = cuda::make_zip_iterator(
-    cuda::std::make_tuple(cuda::counting_iterator<cudf::size_type>{0}, reduction_results.begin()));
+    cuda::std::make_tuple(cuda::counting_iterator<cudf::size_type>{0}, reduction_results.data()));
   auto const output_it = cuda::make_zip_iterator(cuda::std::make_tuple(
     distinct_indices->begin(), distinct_counts->mutable_view().begin<histogram_count_type>()));
 

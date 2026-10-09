@@ -16,9 +16,9 @@
 #include <cudf/strings/detail/strings_children.cuh>
 #include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/stream>
@@ -233,7 +233,8 @@ struct null_considering_binop {
                  "Output column type should match input column type");
 
     // Shallow copy of the resultant strings
-    rmm::device_uvector<cudf::string_view> out_col_strings(col_size, stream);
+    cuda::device_buffer<cudf::string_view> out_col_strings(
+      stream, cudf::get_current_device_resource_ref(), col_size, cuda::no_init);
 
     // Invalid output column strings - null rows
     cudf::string_view const invalid_str{nullptr, 0};
@@ -259,7 +260,11 @@ struct null_considering_binop {
       lhs_dev_view, rhs_dev_view, col_size, stream, minmax_func, out_col_strings.data());
 
     // Create an output column with the resultant strings
-    return cudf::make_strings_column(out_col_strings, invalid_str, stream, mr);
+    return cudf::make_strings_column(
+      cudf::device_span<cudf::string_view const>{out_col_strings.data(), out_col_strings.size()},
+      invalid_str,
+      stream,
+      mr);
   }
 };
 

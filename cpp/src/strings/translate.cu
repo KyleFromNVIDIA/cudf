@@ -8,6 +8,7 @@
 #include <cudf/column/column_factories.hpp>
 #include <cudf/detail/null_mask.hpp>
 #include <cudf/detail/nvtx/ranges.hpp>
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/strings/detail/strings_children.cuh>
 #include <cudf/strings/string_view.cuh>
@@ -18,6 +19,7 @@
 
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/std/utility>
 #include <cuda/stream>
 #include <thrust/binary_search.h>
@@ -38,8 +40,8 @@ namespace {
  */
 struct translate_fn {
   column_device_view const d_strings;
-  rmm::device_uvector<translate_table>::iterator table_begin;
-  rmm::device_uvector<translate_table>::iterator table_end;
+  translate_table const* table_begin;
+  translate_table const* table_end;
   size_type* d_sizes{};
   char* d_chars{};
   cudf::detail::input_offsetalator d_offsets;
@@ -96,13 +98,16 @@ std::unique_ptr<column> translate(
     return lhs.first < rhs.first;
   });
   // copy translate table to device memory
-  rmm::device_uvector<translate_table> table =
-    cudf::detail::make_device_uvector(htable, stream, cudf::get_current_device_resource_ref());
+  cuda::device_buffer<translate_table> table =
+    cudf::detail::make_device_buffer(htable, stream, cudf::get_current_device_resource_ref());
 
   auto d_strings = column_device_view::create(strings.parent(), stream);
 
-  auto [offsets_column, chars] = make_strings_children(
-    translate_fn{*d_strings, table.begin(), table.end()}, strings.size(), stream, mr);
+  auto [offsets_column, chars] =
+    make_strings_children(translate_fn{*d_strings, table.data(), (table.data() + table.size())},
+                          strings.size(),
+                          stream,
+                          mr);
 
   return make_strings_column(strings.size(),
                              std::move(offsets_column),

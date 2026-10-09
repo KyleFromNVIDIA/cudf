@@ -12,10 +12,12 @@
 #include <cudf/io/datasource.hpp>
 #include <cudf/io/json.hpp>
 #include <cudf/types.hpp>
+#include <cudf/utilities/memory_resource.hpp>
 #include <cudf/utilities/span.hpp>
 
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/std/iterator>
 #include <thrust/adjacent_difference.h>
 
@@ -43,7 +45,8 @@ std::vector<cudf::io::table_with_metadata> split_byte_range_reading(
   auto find_first_delimiter_in_chunk =
     [total_source_size, &sources, &stream](
       cudf::io::json_reader_options const& reader_opts) -> IndexType {
-    rmm::device_uvector<char> buffer(total_source_size, stream);
+    cuda::device_buffer<char> buffer(
+      stream, cudf::get_current_device_resource_ref(), total_source_size, cuda::no_init);
     auto readbufspan = cudf::io::json::detail::ingest_raw_input(buffer,
                                                                 sources,
                                                                 reader_opts.get_byte_range_offset(),
@@ -120,13 +123,14 @@ template std::vector<cudf::io::table_with_metadata> split_byte_range_reading<std
   cuda::stream_ref stream,
   rmm::device_async_resource_ref mr);
 
-rmm::device_uvector<cudf::size_type> string_offset_to_length(
+cuda::device_buffer<cudf::size_type> string_offset_to_length(
   cudf::strings_column_view const& column, cuda::stream_ref stream)
 {
-  rmm::device_uvector<cudf::size_type> svs_length(column.size(), stream);
+  cuda::device_buffer<cudf::size_type> svs_length(
+    stream, cudf::get_current_device_resource_ref(), column.size(), cuda::no_init);
   auto itr =
     cudf::detail::offsetalator_factory::make_input_iterator(column.offsets(), column.offset());
   thrust::adjacent_difference(
-    rmm::exec_policy_nosync(stream), itr + 1, itr + column.size() + 1, svs_length.begin());
+    rmm::exec_policy_nosync(stream), itr + 1, itr + column.size() + 1, svs_length.data());
   return svs_length;
 }

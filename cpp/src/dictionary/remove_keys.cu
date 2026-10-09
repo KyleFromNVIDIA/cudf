@@ -22,6 +22,7 @@
 
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/stream>
 #include <thrust/fill.h>
@@ -178,10 +179,11 @@ std::unique_ptr<column> remove_unused_keys(dictionary_column_view const& diction
   // search the indices values with key indices to look for any holes
   auto const matches = [&] {
     // build keys index to verify against indices values
-    rmm::device_uvector<int32_t> keys_positions(keys_size, stream);
+    cuda::device_buffer<int32_t> keys_positions(
+      stream, cudf::get_current_device_resource_ref(), keys_size, cuda::no_init);
     thrust::sequence(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                     keys_positions.begin(),
-                     keys_positions.end());
+                     keys_positions.data(),
+                     (keys_positions.data() + keys_positions.size()));
     // wrap the indices for comparison in contains()
     column_view keys_positions_view(
       data_type{type_id::INT32}, keys_size, keys_positions.data(), nullptr, 0);

@@ -113,7 +113,8 @@ auto make_strings_children(SizeAndExecuteFunction size_and_exec_fn,
                            cuda::stream_ref stream,
                            rmm::device_async_resource_ref mr)
 {
-  auto output_sizes        = rmm::device_uvector<size_type>(strings_count, stream);
+  auto output_sizes = cuda::device_buffer<size_type>(
+    stream, cudf::get_current_device_resource_ref(), strings_count, cuda::no_init);
   size_and_exec_fn.d_sizes = output_sizes.data();
 
   auto [buffer_size, thread_count] = d_prog.compute_strided_working_memory(strings_count);
@@ -132,7 +133,7 @@ auto make_strings_children(SizeAndExecuteFunction size_and_exec_fn,
   }
   // Convert the sizes to offsets
   auto [offsets, char_bytes] = cudf::strings::detail::make_offsets_child_column(
-    output_sizes.begin(), output_sizes.end(), stream, mr);
+    output_sizes.data(), (output_sizes.data() + output_sizes.size()), stream, mr);
   size_and_exec_fn.d_offsets =
     cudf::detail::offsetalator_factory::make_input_iterator(offsets->view());
 

@@ -13,6 +13,7 @@
 #include <cudf/ast/expressions.hpp>
 #include <cudf/detail/cuco_helpers.hpp>
 #include <cudf/detail/transform.hpp>
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/hashing/detail/xxhash_64.cuh>
 #include <cudf/io/parquet_io_utils.hpp>
 #include <cudf/io/parquet_schema.hpp>
@@ -553,7 +554,7 @@ std::optional<std::vector<std::vector<size_type>>> aggregate_reader_metadata::ap
 
   // Copy bloom filter bitset spans to device
   auto const device_bloom_filter_data =
-    cudf::detail::make_device_uvector_async(bloom_filter_data, stream, mr.get_temporary_mr());
+    cudf::detail::make_device_buffer_async(bloom_filter_data, stream, mr.get_temporary_mr());
 
   // Create a bloom filter query table caster
   bloom_filter_caster const bloom_filter_col{device_bloom_filter_data,

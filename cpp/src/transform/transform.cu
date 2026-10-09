@@ -11,6 +11,7 @@
 #include <cudf/detail/null_mask.hpp>
 #include <cudf/detail/nvtx/ranges.hpp>
 #include <cudf/detail/transform.hpp>
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/detail/valid_if.cuh>
 #include <cudf/errc.hpp>
@@ -18,6 +19,7 @@
 #include <cudf/stream_compaction.hpp>
 #include <cudf/strings/detail/strings_column_factories.cuh>
 #include <cudf/strings/detail/utilities.hpp>
+#include <cudf/utilities/memory_resource.hpp>
 #include <cudf/utilities/traits.hpp>
 #include <cudf/utilities/type_dispatcher.hpp>
 
@@ -541,7 +543,7 @@ auto to_args(std::span<input_column_view const> inputs,
       out);
   }
 
-  auto d_args = detail::make_device_uvector(h_args, stream, mr);
+  auto d_args = detail::make_device_buffer(h_args, stream, mr);
 
   return std::make_tuple(std::move(d_args), std::move(handles));
 }

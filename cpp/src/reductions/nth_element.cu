@@ -10,9 +10,9 @@
 #include <cudf/reduction/detail/reduction_functions.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/stream>
@@ -38,19 +38,20 @@ std::unique_ptr<cudf::scalar> nth_element(column_view const& col,
       cuda::transform_iterator(cudf::detail::make_validity_iterator(*dcol),
                                cuda::proclaim_return_type<size_type>(
                                  [] __device__(auto b) { return static_cast<size_type>(b); }));
-    rmm::device_uvector<size_type> null_skipped_index(col.size(), stream);
+    cuda::device_buffer<size_type> null_skipped_index(
+      stream, cudf::get_current_device_resource_ref(), col.size(), cuda::no_init);
     // null skipped index for valids only.
     thrust::inclusive_scan(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                            bitmask_iterator,
                            bitmask_iterator + col.size(),
-                           null_skipped_index.begin());
+                           null_skipped_index.data());
 
     auto n_pos =
       thrust::upper_bound(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                          null_skipped_index.begin(),
-                          null_skipped_index.end(),
+                          null_skipped_index.data(),
+                          (null_skipped_index.data() + null_skipped_index.size()),
                           n);
-    auto null_skipped_n = n_pos - null_skipped_index.begin();
+    auto null_skipped_n = n_pos - null_skipped_index.data();
     return cudf::detail::get_element(col, null_skipped_n, stream, mr);
   } else {
     n = wrap_n(col.size());

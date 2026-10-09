@@ -17,12 +17,13 @@
 #include <cudf/column/column_view.hpp>
 #include <cudf/types.hpp>
 #include <cudf/utilities/default_stream.hpp>
+#include <cudf/utilities/memory_resource.hpp>
 #include <cudf/wrappers/durations.hpp>
 #include <cudf/wrappers/timestamps.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <thrust/logical.h>
 #include <thrust/sequence.h>
 
@@ -105,12 +106,16 @@ TYPED_TEST(ChronoColumnTest, ChronoDurationsMatchPrimitiveRepresentation)
   auto primitive_col =
     cudf::test::fixed_width_column_wrapper<Rep>(chrono_col_data.begin(), chrono_col_data.end());
 
-  rmm::device_uvector<int32_t> indices(this->size(), cudf::get_default_stream());
-  thrust::sequence(
-    rmm::exec_policy_nosync(cudf::get_default_stream()), indices.begin(), indices.end());
+  cuda::device_buffer<int32_t> indices(cudf::get_default_stream(),
+                                       cudf::get_current_device_resource_ref(),
+                                       this->size(),
+                                       cuda::no_init);
+  thrust::sequence(rmm::exec_policy_nosync(cudf::get_default_stream()),
+                   indices.data(),
+                   (indices.data() + indices.size()));
   EXPECT_TRUE(thrust::all_of(rmm::exec_policy_nosync(cudf::get_default_stream()),
-                             indices.begin(),
-                             indices.end(),
+                             indices.data(),
+                             (indices.data() + indices.size()),
                              compare_chrono_elements_to_primitive_representation<T>{
                                *cudf::column_device_view::create(primitive_col),
                                *cudf::column_device_view::create(chrono_col)}));
@@ -161,38 +166,42 @@ TYPED_TEST(ChronoColumnTest, ChronosCanBeComparedInDeviceCode)
   auto chrono_rhs_col = cudf::test::generate_timestamps<T>(
     this->size(), cudf::test::time_point_ms(start_rhs), cudf::test::time_point_ms(stop_rhs));
 
-  rmm::device_uvector<int32_t> indices(this->size(), cudf::get_default_stream());
-  thrust::sequence(
-    rmm::exec_policy_nosync(cudf::get_default_stream()), indices.begin(), indices.end());
+  cuda::device_buffer<int32_t> indices(cudf::get_default_stream(),
+                                       cudf::get_current_device_resource_ref(),
+                                       this->size(),
+                                       cuda::no_init);
+  thrust::sequence(rmm::exec_policy_nosync(cudf::get_default_stream()),
+                   indices.data(),
+                   (indices.data() + indices.size()));
 
   EXPECT_TRUE(thrust::all_of(
     rmm::exec_policy_nosync(cudf::get_default_stream()),
-    indices.begin(),
-    indices.end(),
+    indices.data(),
+    (indices.data() + indices.size()),
     compare_chrono_elements<TypeParam>{cudf::binary_operator::LESS,
                                        *cudf::column_device_view::create(chrono_lhs_col),
                                        *cudf::column_device_view::create(chrono_rhs_col)}));
 
   EXPECT_TRUE(thrust::all_of(
     rmm::exec_policy_nosync(cudf::get_default_stream()),
-    indices.begin(),
-    indices.end(),
+    indices.data(),
+    (indices.data() + indices.size()),
     compare_chrono_elements<TypeParam>{cudf::binary_operator::GREATER,
                                        *cudf::column_device_view::create(chrono_rhs_col),
                                        *cudf::column_device_view::create(chrono_lhs_col)}));
 
   EXPECT_TRUE(thrust::all_of(
     rmm::exec_policy_nosync(cudf::get_default_stream()),
-    indices.begin(),
-    indices.end(),
+    indices.data(),
+    (indices.data() + indices.size()),
     compare_chrono_elements<TypeParam>{cudf::binary_operator::LESS_EQUAL,
                                        *cudf::column_device_view::create(chrono_lhs_col),
                                        *cudf::column_device_view::create(chrono_lhs_col)}));
 
   EXPECT_TRUE(thrust::all_of(
     rmm::exec_policy_nosync(cudf::get_default_stream()),
-    indices.begin(),
-    indices.end(),
+    indices.data(),
+    (indices.data() + indices.size()),
     compare_chrono_elements<TypeParam>{cudf::binary_operator::GREATER_EQUAL,
                                        *cudf::column_device_view::create(chrono_rhs_col),
                                        *cudf::column_device_view::create(chrono_rhs_col)}));

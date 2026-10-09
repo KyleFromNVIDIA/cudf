@@ -11,11 +11,12 @@
 #include <cudf/column/column_factories.hpp>
 #include <cudf/copying.hpp>
 #include <cudf/groupby.hpp>
+#include <cudf/utilities/memory_resource.hpp>
 #include <cudf/utilities/type_dispatcher.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/std/limits>
 #include <cuda/std/tuple>
@@ -97,13 +98,14 @@ struct host_udf_groupby_example : cudf::groupby_host_udf {
                                                     mr);
 
       // Store row index if it is valid, otherwise store a negative value denoting a null row.
-      rmm::device_uvector<cudf::size_type> valid_idx(num_groups, stream);
+      cuda::device_buffer<cudf::size_type> valid_idx(
+        stream, cudf::get_current_device_resource_ref(), num_groups, cuda::no_init);
 
       thrust::transform(
         rmm::exec_policy_nosync(stream),
         cuda::counting_iterator<cudf::size_type>{0},
         cuda::counting_iterator{num_groups},
-        cuda::make_zip_iterator(output->mutable_view().begin<OutputType>(), valid_idx.begin()),
+        cuda::make_zip_iterator(output->mutable_view().begin<OutputType>(), valid_idx.data()),
         transform_fn{*values_dv_ptr,
                      offsets,
                      group_indices,
@@ -111,7 +113,7 @@ struct host_udf_groupby_example : cudf::groupby_host_udf {
                      group_sum.begin<InputType>()});
 
       auto const valid_idx_cv = cudf::column_view{
-        cudf::data_type{cudf::type_id::INT32}, num_groups, valid_idx.begin(), nullptr, 0};
+        cudf::data_type{cudf::type_id::INT32}, num_groups, valid_idx.data(), nullptr, 0};
       return std::move(cudf::gather(cudf::table_view{{output->view()}},
                                     valid_idx_cv,
                                     cudf::out_of_bounds_policy::NULLIFY,

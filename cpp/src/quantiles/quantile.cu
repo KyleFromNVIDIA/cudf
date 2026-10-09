@@ -10,6 +10,7 @@
 #include <cudf/detail/null_mask.hpp>
 #include <cudf/detail/nvtx/ranges.hpp>
 #include <cudf/detail/sorting.hpp>
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/detail/utilities/vector_factories.hpp>
 #include <cudf/detail/valid_if.cuh>
 #include <cudf/dictionary/detail/iterator.cuh>
@@ -21,7 +22,6 @@
 #include <cudf/utilities/error.hpp>
 #include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
 #include <cuda/functional>
@@ -75,14 +75,14 @@ struct quantile_functor {
     auto d_output = mutable_column_device_view::create(output->mutable_view(), stream);
 
     auto q_device =
-      cudf::detail::make_device_uvector(q, stream, cudf::get_current_device_resource_ref());
+      cudf::detail::make_device_buffer(q, stream, cudf::get_current_device_resource_ref());
 
     if (!cudf::is_dictionary(input.type())) {
       auto sorted_data =
         cuda::make_permutation_iterator(input.data<StorageType>(), ordered_indices);
       thrust::transform(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                        q_device.begin(),
-                        q_device.end(),
+                        q_device.data(),
+                        (q_device.data() + q_device.size()),
                         d_output->template begin<StorageResult>(),
                         cuda::proclaim_return_type<StorageResult>(
                           [sorted_data, interp = interp, size = size] __device__(double q) {
@@ -93,8 +93,8 @@ struct quantile_functor {
       auto sorted_data = cuda::make_permutation_iterator(
         dictionary::detail::make_dictionary_iterator<T>(*d_input), ordered_indices);
       thrust::transform(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                        q_device.begin(),
-                        q_device.end(),
+                        q_device.data(),
+                        (q_device.data() + q_device.size()),
                         d_output->template begin<StorageResult>(),
                         cuda::proclaim_return_type<StorageResult>(
                           [sorted_data, interp = interp, size = size] __device__(double q) {
@@ -110,8 +110,8 @@ struct quantile_functor {
           [input = *d_input] __device__(size_type idx) { return input.is_valid_nocheck(idx); }));
 
       auto [mask, null_count] = valid_if(
-        q_device.begin(),
-        q_device.end(),
+        q_device.data(),
+        (q_device.data() + q_device.size()),
         [sorted_validity, interp = interp, size = size] __device__(double q) {
           return select_quantile_validity(sorted_validity, size, q, interp);
         },

@@ -11,10 +11,11 @@
 #include <cudf/types.hpp>
 #include <cudf/utilities/default_stream.hpp>
 #include <cudf/utilities/error.hpp>
+#include <cudf/utilities/memory_resource.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/stream>
 #include <thrust/count.h>
@@ -38,18 +39,19 @@ bool is_sorted(cudf::table_view const& in,
     // Using a temporary buffer for intermediate transform results from the lambda containing
     // the comparator speeds up compile-time significantly over using the comparator directly
     // in thrust::is_sorted.
-    auto d_results = rmm::device_uvector<bool>(in.num_rows(), stream);
+    auto d_results = cuda::device_buffer<bool>(
+      stream, cudf::get_current_device_resource_ref(), in.num_rows(), cuda::no_init);
     thrust::transform(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                       cuda::counting_iterator<size_type>{0},
                       cuda::counting_iterator<size_type>{in.num_rows()},
-                      d_results.begin(),
+                      d_results.data(),
                       [device_comparator] __device__(auto idx) -> bool {
                         return (idx == 0) || device_comparator(idx - 1, idx);
                       });
 
     return thrust::count(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                         d_results.begin(),
-                         d_results.end(),
+                         d_results.data(),
+                         (d_results.data() + d_results.size()),
                          false) == 0;
   } else {
     auto const device_comparator = comparator.less<false>(has_nested_nulls(in));

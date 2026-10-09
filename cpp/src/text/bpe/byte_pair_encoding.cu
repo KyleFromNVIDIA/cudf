@@ -25,6 +25,7 @@
 
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/stream>
@@ -354,9 +355,13 @@ std::unique_ptr<cudf::column> byte_pair_encoding(cudf::strings_column_view const
   auto const chars_size    = last_offset - first_offset;
   auto const d_input_chars = input.chars_begin(stream) + first_offset;
 
-  rmm::device_uvector<int8_t> d_spaces(chars_size, stream);  // identifies non-merged pairs
+  cuda::device_buffer<int8_t> d_spaces(stream,
+                                       cudf::get_current_device_resource_ref(),
+                                       chars_size,
+                                       cuda::no_init);  // identifies non-merged pairs
   // used for various purposes below: unpairable-offsets, pair ranks, separator insert positions
-  rmm::device_uvector<int64_t> d_working(chars_size, stream);
+  cuda::device_buffer<int64_t> d_working(
+    stream, cudf::get_current_device_resource_ref(), chars_size, cuda::no_init);
 
   auto const chars_begin = cuda::counting_iterator<int64_t>{0};
   auto const chars_end   = cuda::counting_iterator<int64_t>{chars_size};
@@ -381,7 +386,10 @@ std::unique_ptr<cudf::column> byte_pair_encoding(cudf::strings_column_view const
     auto const unpairables = cuda::std::distance(d_up_offsets, up_end);  // number of unpairables
 
     // new string boundaries created by combining unpairable offsets with the existing offsets
-    auto tmp_offsets = rmm::device_uvector<int64_t>(unpairables + input.size() + 1, stream);
+    cuda::device_buffer<int64_t> tmp_offsets(stream,
+                                             cudf::get_current_device_resource_ref(),
+                                             unpairables + input.size() + 1,
+                                             cuda::no_init);
     auto input_offsets =
       cudf::detail::offsetalator_factory::make_input_iterator(input.offsets(), input.offset());
     thrust::merge(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
@@ -389,26 +397,30 @@ std::unique_ptr<cudf::column> byte_pair_encoding(cudf::strings_column_view const
                   input_offsets + input.size() + 1,
                   d_up_offsets,
                   up_end,
-                  tmp_offsets.begin());
+                  tmp_offsets.data());
     // remove any adjacent duplicate offsets (i.e. empty or null rows)
     auto const offsets_end =
       thrust::unique(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                     tmp_offsets.begin(),
-                     tmp_offsets.end());
+                     tmp_offsets.data(),
+                     (tmp_offsets.data() + tmp_offsets.size()));
     auto const offsets_total =
-      static_cast<cudf::size_type>(cuda::std::distance(tmp_offsets.begin(), offsets_end));
-    tmp_offsets.resize(offsets_total, stream);
+      static_cast<cudf::size_type>(cuda::std::distance(tmp_offsets.data(), offsets_end));
 
     // temp column created with the merged offsets and the original chars data
-    auto const col_offsets = cudf::column_view(cudf::device_span<int64_t const>(tmp_offsets));
-    auto const tmp_size    = offsets_total - 1;
-    auto const tmp_input   = cudf::column_view(
+    auto const col_offsets =
+      cudf::column_view(cudf::device_span<int64_t const>(tmp_offsets.data(), offsets_total));
+    auto const tmp_size  = offsets_total - 1;
+    auto const tmp_input = cudf::column_view(
       input.parent().type(), tmp_size, input.chars_begin(stream), nullptr, 0, 0, {col_offsets});
     auto const d_tmp_strings = cudf::column_device_view::create(tmp_input, stream);
 
     // launch the byte-pair-encoding kernel on the temp column
-    rmm::device_uvector<int8_t> d_rerank(chars_size, stream);  // more working memory;
-    rmm::device_uvector<cudf::size_type> d_ranks(chars_size, stream);
+    cuda::device_buffer<int8_t> d_rerank(stream,
+                                         cudf::get_current_device_resource_ref(),
+                                         chars_size,
+                                         cuda::no_init);  // more working memory;
+    cuda::device_buffer<cudf::size_type> d_ranks(
+      stream, cudf::get_current_device_resource_ref(), chars_size, cuda::no_init);
     auto const pair_map = get_bpe_merge_pairs_impl(merge_pairs)->get_merge_pairs_ref();
     bpe_parallel_fn<decltype(pair_map)><<<tmp_size, block_size, 0, stream.get()>>>(
       *d_tmp_strings, d_input_chars, pair_map, d_spaces.data(), d_ranks.data(), d_rerank.data());
@@ -416,14 +428,15 @@ std::unique_ptr<cudf::column> byte_pair_encoding(cudf::strings_column_view const
   }
 
   // compute the output sizes
-  auto output_sizes = rmm::device_uvector<cudf::size_type>(input.size(), stream);
+  auto output_sizes = cuda::device_buffer<cudf::size_type>(
+    stream, cudf::get_current_device_resource_ref(), input.size(), cuda::no_init);
   bpe_finalize<<<input.size(), block_size, 0, stream.get()>>>(
     *d_strings, d_input_chars, d_spaces.data(), output_sizes.data());
   CUDF_CUDA_TRY(cudaGetLastError());
 
   // convert sizes to offsets in-place
   auto [offsets, bytes] = cudf::strings::detail::make_offsets_child_column(
-    output_sizes.begin(), output_sizes.end(), stream, mr);
+    output_sizes.data(), (output_sizes.data() + output_sizes.size()), stream, mr);
 
   // build the output: inserting separators to the input character data
   rmm::device_uvector<char> chars(bytes, stream, mr);

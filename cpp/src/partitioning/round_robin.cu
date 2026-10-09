@@ -22,6 +22,7 @@
 #include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/stream>
@@ -84,10 +85,11 @@ std::pair<std::unique_ptr<cudf::table>, std::vector<cudf::size_type>> degenerate
                                }));
 
   if (num_partitions == nrows) {
-    rmm::device_uvector<cudf::size_type> partition_offsets(num_partitions + 1, stream);
+    cuda::device_buffer<cudf::size_type> partition_offsets(
+      stream, cudf::get_current_device_resource_ref(), num_partitions + 1, cuda::no_init);
     thrust::sequence(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                     partition_offsets.begin(),
-                     partition_offsets.end());
+                     partition_offsets.data(),
+                     (partition_offsets.data() + partition_offsets.size()));
 
     auto uniq_tbl = cudf::detail::gather(input,
                                          rotated_iter_begin,
@@ -98,7 +100,8 @@ std::pair<std::unique_ptr<cudf::table>, std::vector<cudf::size_type>> degenerate
 
     return std::pair{std::move(uniq_tbl), cudf::detail::make_std_vector(partition_offsets, stream)};
   } else {  //( num_partitions > nrows )
-    rmm::device_uvector<cudf::size_type> d_row_indices(nrows, stream);
+    cuda::device_buffer<cudf::size_type> d_row_indices(
+      stream, cudf::get_current_device_resource_ref(), nrows, cuda::no_init);
 
     // copy rotated right partition indexes that
     // fall in the interval [0, nrows):
@@ -106,14 +109,14 @@ std::pair<std::unique_ptr<cudf::table>, std::vector<cudf::size_type>> degenerate
     cudf::detail::copy_if_async(
       rotated_iter_begin,
       rotated_iter_begin + num_partitions,
-      d_row_indices.begin(),
+      d_row_indices.data(),
       [nrows] __device__(auto index) -> bool { return (index < nrows); },
       stream);
 
     //...and then use the result, d_row_indices, as gather map:
     auto uniq_tbl = cudf::detail::gather(input,
-                                         d_row_indices.begin(),
-                                         d_row_indices.end(),  // map
+                                         d_row_indices.data(),
+                                         (d_row_indices.data() + d_row_indices.size()),  // map
                                          cudf::out_of_bounds_policy::DONT_CHECK,
                                          stream,
                                          mr);
@@ -128,14 +131,15 @@ std::pair<std::unique_ptr<cudf::table>, std::vector<cudf::size_type>> degenerate
         [nrows] __device__(auto index) { return (index < nrows ? 1 : 0); }));
 
     // offsets (part 2: compute partition offsets):
-    rmm::device_uvector<cudf::size_type> partition_offsets(num_partitions + 1, stream);
+    cuda::device_buffer<cudf::size_type> partition_offsets(
+      stream, cudf::get_current_device_resource_ref(), num_partitions + 1, cuda::no_init);
     thrust::exclusive_scan(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                            nedges_iter_begin,
                            nedges_iter_begin + num_partitions,
-                           partition_offsets.begin());
+                           partition_offsets.data());
     // Add the total row count as the last offset
     thrust::fill_n(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                   partition_offsets.end() - 1,
+                   (partition_offsets.data() + partition_offsets.size()) - 1,
                    1,
                    nrows);
 

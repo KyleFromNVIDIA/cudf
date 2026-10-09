@@ -16,6 +16,7 @@
 #include <rmm/resource_ref.hpp>
 
 #include <cuco/operator.hpp>
+#include <cuda/buffer>
 #include <cuda/iterator>
 #include <cuda/std/atomic>
 #include <cuda/std/iterator>
@@ -46,9 +47,9 @@ rmm::device_uvector<size_type> reduce_by_row_keep_first_last_none(Set& set,
                                                                   cuda::stream_ref stream,
                                                                   rmm::device_async_resource_ref mr)
 {
-  auto output_indices = rmm::device_uvector<size_type>(num_rows, stream, mr);
-  auto reduction_results =
-    rmm::device_uvector<size_type>(num_rows, stream, cudf::get_current_device_resource_ref());
+  auto output_indices    = rmm::device_uvector<size_type>(num_rows, stream, mr);
+  auto reduction_results = cuda::device_buffer<size_type>(
+    stream, cudf::get_current_device_resource_ref(), num_rows, cuda::no_init);
   initialize_reduction_results(reduction_results.data(), num_rows, keep, stream);
 
   auto set_ref = set.ref(cuco::op::insert_and_find);
@@ -56,7 +57,7 @@ rmm::device_uvector<size_type> reduce_by_row_keep_first_last_none(Set& set,
   thrust::for_each(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                    cuda::counting_iterator<cudf::size_type>{0},
                    cuda::counting_iterator{num_rows},
-                   [set_ref, keep, reduction_results = reduction_results.begin()] __device__(
+                   [set_ref, keep, reduction_results = reduction_results.data()] __device__(
                      size_type const idx) mutable -> void {
                      auto const [inserted_idx_ptr, _] = set_ref.insert_and_find(idx);
 

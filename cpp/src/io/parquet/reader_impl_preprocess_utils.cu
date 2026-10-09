@@ -16,6 +16,7 @@
 
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/std/algorithm>
@@ -378,33 +379,35 @@ cudf::detail::hostdevice_vector<PageInfo> sort_pages(device_span<PageInfo const>
   // 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3
   //
   // We also need to preserve key-relative page ordering, so we need to use a stable sort.
-  rmm::device_uvector<int32_t> page_keys{unsorted_pages.size(), stream};
+  cuda::device_buffer<int32_t> page_keys(
+    stream, cudf::get_current_device_resource_ref(), unsorted_pages.size(), cuda::no_init);
   thrust::transform(
     rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
     unsorted_pages.begin(),
     unsorted_pages.end(),
-    page_keys.begin(),
+    page_keys.data(),
     cuda::proclaim_return_type<int32_t>([chunks = chunks.begin()] __device__(PageInfo const& page) {
       return chunks[page.chunk_idx].src_col_index;
     }));
   // we are doing this by sorting indices first and then transforming the output because nvcc
   // started generating kernels using too much shared memory when trying to sort the pages
   // directly.
-  rmm::device_uvector<int32_t> sort_indices(unsorted_pages.size(), stream);
+  cuda::device_buffer<int32_t> sort_indices(
+    stream, cudf::get_current_device_resource_ref(), unsorted_pages.size(), cuda::no_init);
   thrust::sequence(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                   sort_indices.begin(),
-                   sort_indices.end(),
+                   sort_indices.data(),
+                   (sort_indices.data() + sort_indices.size()),
                    0);
   thrust::stable_sort_by_key(
     rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-    page_keys.begin(),
-    page_keys.end(),
-    sort_indices.begin(),
+    page_keys.data(),
+    (page_keys.data() + page_keys.size()),
+    sort_indices.data(),
     cuda::std::less<int>());
   auto pass_pages = cudf::detail::hostdevice_vector<PageInfo>(unsorted_pages.size(), stream);
   thrust::gather(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                 sort_indices.begin(),
-                 sort_indices.end(),
+                 sort_indices.data(),
+                 (sort_indices.data() + sort_indices.size()),
                  unsorted_pages.data(),
                  pass_pages.d_begin());
   stream.sync();
@@ -441,12 +444,13 @@ void decode_page_headers_impl(pass_intermediate_data& pass,
   CUDF_FUNC_RANGE();
 
   auto iter = cuda::counting_iterator<size_t>{0};
-  rmm::device_uvector<size_type> chunk_page_offsets(pass.chunks.size() + 1, stream);
+  cuda::device_buffer<size_type> chunk_page_offsets(
+    stream, cudf::get_current_device_resource_ref(), pass.chunks.size() + 1, cuda::no_init);
   thrust::transform_exclusive_scan(
     rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
     iter,
     iter + pass.chunks.size() + 1,
-    chunk_page_offsets.begin(),
+    chunk_page_offsets.data(),
     cuda::proclaim_return_type<size_type>(
       [chunks = pass.chunks.d_begin(), num_chunks = pass.chunks.size()] __device__(size_t i) {
         return static_cast<size_type>(
@@ -454,12 +458,13 @@ void decode_page_headers_impl(pass_intermediate_data& pass,
       }),
     size_type{0},
     cuda::std::plus<size_type>{});
-  rmm::device_uvector<chunk_page_info> d_chunk_page_info(pass.chunks.size(), stream);
+  cuda::device_buffer<chunk_page_info> d_chunk_page_info(
+    stream, cudf::get_current_device_resource_ref(), pass.chunks.size(), cuda::no_init);
   thrust::for_each(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                    iter,
                    iter + pass.chunks.size(),
-                   [cpi                = d_chunk_page_info.begin(),
-                    chunk_page_offsets = chunk_page_offsets.begin(),
+                   [cpi                = d_chunk_page_info.data(),
+                    chunk_page_offsets = chunk_page_offsets.data(),
                     unsorted_pages     = unsorted_pages.begin()] __device__(size_t i) {
                      cpi[i].pages = &unsorted_pages[chunk_page_offsets[i]];
                    });
@@ -591,23 +596,25 @@ void decode_page_headers_impl(pass_intermediate_data& pass,
   // page_keys:   1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3
   //
   // result:      0,          4,          8
-  rmm::device_uvector<size_type> page_counts(pass.pages.size() + 1, stream);
+  cuda::device_buffer<size_type> page_counts(
+    stream, cudf::get_current_device_resource_ref(), pass.pages.size() + 1, cuda::no_init);
   auto page_keys =
     make_page_key_iterator(device_span<PageInfo const>(pass.pages.device_ptr(), pass.pages.size()));
   auto const page_counts_end = cudf::detail::reduce_by_key(page_keys,
                                                            page_keys + pass.pages.size(),
                                                            cuda::make_constant_iterator(1),
                                                            cuda::make_discard_iterator(),
-                                                           page_counts.begin(),
+                                                           page_counts.data(),
                                                            cuda::std::plus<>{},
                                                            stream)
                                  .second;
-  auto const num_page_counts = page_counts_end - page_counts.begin();
-  pass.page_offsets          = rmm::device_uvector<size_type>(num_page_counts + 1, stream);
+  auto const num_page_counts = page_counts_end - page_counts.data();
+  pass.page_offsets          = cuda::device_buffer<size_type>(
+    stream, cudf::get_current_device_resource_ref(), num_page_counts + 1, cuda::no_init);
   thrust::exclusive_scan(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
-                         page_counts.begin(),
-                         page_counts.begin() + num_page_counts + 1,
-                         pass.page_offsets.begin());
+                         page_counts.data(),
+                         page_counts.data() + num_page_counts + 1,
+                         pass.page_offsets.data());
 
   // setup dict_page for each chunk if necessary
   thrust::for_each(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),

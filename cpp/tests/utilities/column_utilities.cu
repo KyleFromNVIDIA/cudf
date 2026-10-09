@@ -20,11 +20,13 @@
 #include <cudf/structs/struct_view.hpp>
 #include <cudf/table/table_device_view.cuh>
 #include <cudf/utilities/default_stream.hpp>
+#include <cudf/utilities/memory_resource.hpp>
 #include <cudf/utilities/type_checks.hpp>
 #include <cudf/utilities/type_dispatcher.hpp>
 
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/std/cmath>
@@ -558,21 +560,21 @@ struct column_comparator_impl {
                                mr.get_temporary_mr());  // worst case: everything different
     auto input_iter = cuda::counting_iterator<cudf::size_type>{0};
 
-    auto diff_map =
-      rmm::device_uvector<bool>(lhs_row_indices.size(), stream, mr.get_temporary_mr());
+    auto diff_map = cuda::device_buffer<bool>(
+      stream, mr.get_temporary_mr(), lhs_row_indices.size(), cuda::no_init);
 
     thrust::transform(
       rmm::exec_policy_nosync(stream, mr.get_temporary_mr()),
       input_iter,
       input_iter + lhs_row_indices.size(),
-      diff_map.begin(),
+      diff_map.data(),
       ComparatorType(
         *d_lhs_row_indices, *d_rhs_row_indices, fp_ulps, device_comparator, *d_lhs, *d_rhs));
 
     auto diff_iter = thrust::copy_if(rmm::exec_policy_nosync(stream, mr.get_temporary_mr()),
                                      input_iter,
                                      input_iter + lhs_row_indices.size(),
-                                     diff_map.begin(),
+                                     diff_map.data(),
                                      differences.begin(),
                                      cuda::std::identity{});
 
