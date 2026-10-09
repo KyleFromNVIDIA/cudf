@@ -17,6 +17,7 @@
 
 #include <cooperative_groups/reduce.h>
 #include <cuda/buffer>
+#include <cuda/cmath>
 #include <cuda/functional>
 #include <cuda/std/utility>
 #include <thrust/transform_scan.h>
@@ -1094,7 +1095,7 @@ inline __device__ bool prefetch_string_data(int t,
 
   // Nominally, each thread will copy an equal number of bytes; this rounds up.
   auto const nominal_thread_bytes_to_copy =
-    cudf::util::div_rounding_up_unsafe<int32_t>(total_bytes_to_copy, block_size);
+    cuda::ceil_div<int32_t, int32_t>(total_bytes_to_copy, block_size);
   int32_t const thread_offset = nominal_thread_bytes_to_copy * t;
 
   if (thread_offset < total_bytes_to_copy) {
