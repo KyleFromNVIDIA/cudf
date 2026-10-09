@@ -433,7 +433,7 @@ cuda::device_buffer<cudf::size_type> sample_indices_with_run_length(cudf::size_t
       cuda::counting_iterator<cudf::size_type>{0},
       cuda::proclaim_return_type<cudf::size_type>(
         [rb              = run_lens.data(),
-         re              = run_lens.data() + ns.size(),
+         re              = run_lens.data() + run_lens.size(),
          samples_indices = samples_indices.data()] __device__(cudf::size_type i) {
           auto sample_idx = thrust::upper_bound(thrust::seq, rb, re, i) - rb;
           return samples_indices[sample_idx];
