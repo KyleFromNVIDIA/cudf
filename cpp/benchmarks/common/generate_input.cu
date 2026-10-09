@@ -424,7 +424,7 @@ cuda::device_buffer<cudf::size_type> sample_indices_with_run_length(cudf::size_t
     auto run_lens             = avglen_dist(engine, approx_run_len);
     thrust::inclusive_scan(thrust::device,
                            run_lens.data(),
-                           run_lens.data() + ns.size(),
+                           run_lens.data() + run_lens.size(),
                            run_lens.data(),
                            cuda::std::plus<int>{});
     auto const samples_indices = sample_dist(engine, approx_run_len + 1);
