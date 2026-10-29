@@ -179,8 +179,7 @@ struct interleave_columns_impl<T, std::enable_if_t<std::is_same_v<T, cudf::strin
                       indices.begin(),
                       interleave_strings_fn{*d_table});
 
-    return cudf::make_strings_column(
-      cudf::device_span<cudf::strings::detail::string_index_pair const>{indices}, stream, mr);
+    return cudf::make_strings_column(indices, stream, mr);
   }
 };
 
