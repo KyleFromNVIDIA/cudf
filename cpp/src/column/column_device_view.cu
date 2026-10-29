@@ -78,7 +78,11 @@ create_device_view_from_view(ColumnView const& source,
   // require setting some internal device pointers before being copied
   // from CPU to device.
   auto descendant_storage = std::make_unique<cuda::device_buffer<char>>(
-    stream, mr, descendant_storage_bytes, cuda::no_init);
+    stream,
+    mr,
+    descendant_storage_bytes,
+    cuda::no_init,
+    cuda::std::execution::prop{cuda::allocation_alignment, alignof(ColumnDeviceView)});
   cudf::device_span<char> descendant_storage_data = *descendant_storage;
 
   auto tmp_result = std::make_unique<ColumnDeviceView>(
