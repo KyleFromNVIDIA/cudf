@@ -14,6 +14,7 @@
 #include <cudf/detail/null_mask.hpp>
 #include <cudf/detail/nvtx/ranges.hpp>
 #include <cudf/detail/sizes_to_offsets_iterator.cuh>
+#include <cudf/detail/utilities/buffer_factories.hpp>
 #include <cudf/null_mask.hpp>
 #include <cudf/strings/detail/converters.hpp>
 #include <cudf/strings/detail/strings_children.cuh>
@@ -27,9 +28,9 @@
 
 #include <nvtext/unicode_normalize.hpp>
 
-#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/functional>
 #include <cuda/iterator>
 #include <cuda/std/algorithm>
@@ -273,20 +274,20 @@ struct is_zero_comp_key_fn {
 }  // namespace detail
 
 struct unicode_normalizer::unicode_normalizer_impl {
-  rmm::device_uvector<uint32_t> decomp_offsets;  // size DECOMP_OFFSETS_SIZE
-  rmm::device_uvector<uint32_t> decomp_table;    // flat replacement codepoints
-  rmm::device_uvector<uint8_t> ccc_table;        // size CODEPOINT_TABLE_SIZE
-  rmm::device_uvector<cudf::bitmask_type> compat_decomp_flags;
-  rmm::device_uvector<uint64_t> comp_keys;    // sorted (starter<<32|combining)
-  rmm::device_uvector<uint32_t> comp_values;  // parallel composed codepoints
+  cuda::device_buffer<uint32_t> decomp_offsets;  // size DECOMP_OFFSETS_SIZE
+  cuda::device_buffer<uint32_t> decomp_table;    // flat replacement codepoints
+  cuda::device_buffer<uint8_t> ccc_table;        // size CODEPOINT_TABLE_SIZE
+  cuda::device_buffer<cudf::bitmask_type> compat_decomp_flags;
+  cuda::device_buffer<uint64_t> comp_keys;    // sorted (starter<<32|combining)
+  cuda::device_buffer<uint32_t> comp_values;  // parallel composed codepoints
   unicode_normalization_form form;
 
-  unicode_normalizer_impl(rmm::device_uvector<uint32_t>&& decomp_offsets,
-                          rmm::device_uvector<uint32_t>&& decomp_table,
-                          rmm::device_uvector<uint8_t>&& ccc_table,
-                          rmm::device_uvector<cudf::bitmask_type>&& compat_decomp_flags,
-                          rmm::device_uvector<uint64_t>&& comp_keys,
-                          rmm::device_uvector<uint32_t>&& comp_values,
+  unicode_normalizer_impl(cuda::device_buffer<uint32_t>&& decomp_offsets,
+                          cuda::device_buffer<uint32_t>&& decomp_table,
+                          cuda::device_buffer<uint8_t>&& ccc_table,
+                          cuda::device_buffer<cudf::bitmask_type>&& compat_decomp_flags,
+                          cuda::device_buffer<uint64_t>&& comp_keys,
+                          cuda::device_buffer<uint32_t>&& comp_values,
                           unicode_normalization_form form)
     : decomp_offsets(std::move(decomp_offsets)),
       decomp_table(std::move(decomp_table)),
@@ -340,14 +341,17 @@ unicode_normalizer::unicode_normalizer(cudf::table_view const& unicode_data,
   auto const row_iter = cuda::make_counting_iterator(cudf::size_type{0});
 
   // Build Canonical Combining Class (CCC) table
-  auto ccc_table = cudf::detail::make_zeroed_device_uvector_async<uint8_t>(
+  auto ccc_table = cudf::detail::make_zeroed_device_buffer_async<uint8_t>(
     detail::CODEPOINT_TABLE_SIZE, stream, mr);
 
   // Allocate compat_decomp_flags only for NFC/NFKC (NFD/NFKD never run the quick check).
   bool const need_compat_flags =
     (form == unicode_normalization_form::NFC || form == unicode_normalization_form::NFKC);
-  auto compat_decomp_flags = rmm::device_uvector<cudf::bitmask_type>(
-    need_compat_flags ? cudf::num_bitmask_words(detail::CODEPOINT_TABLE_SIZE) : 0, stream, mr);
+  auto compat_decomp_flags = cuda::device_buffer<cudf::bitmask_type>(
+    stream,
+    mr,
+    need_compat_flags ? cudf::num_bitmask_words(detail::CODEPOINT_TABLE_SIZE) : 0,
+    cuda::no_init);
   if (need_compat_flags) {
     thrust::uninitialized_fill(
       policy, compat_decomp_flags.begin(), compat_decomp_flags.end(), uint32_t{0});
@@ -356,7 +360,7 @@ unicode_normalizer::unicode_normalizer(cudf::table_view const& unicode_data,
   // Fused single-pass kernel: scatter CCC values, scatter per-codepoint decomposition
   // token counts into decomp_offsets, and (for NFC/NFKC) set initial quick-check flags
   // for compat decompositions and singleton canonical decompositions.
-  auto decomp_offsets = cudf::detail::make_zeroed_device_uvector_async<uint32_t>(
+  auto decomp_offsets = cudf::detail::make_zeroed_device_buffer_async<uint32_t>(
     detail::DECOMP_OFFSETS_SIZE, stream, mr);
   thrust::for_each_n(policy,
                      row_iter,
@@ -385,7 +389,7 @@ unicode_normalizer::unicode_normalizer(cudf::table_view const& unicode_data,
     decomp_offsets.begin(), decomp_offsets.end(), decomp_offsets.begin(), 0, stream, temp_mr);
 
   // Fill decomp_table
-  auto decomp_table    = rmm::device_uvector<uint32_t>(total_decomp_size, stream, mr);
+  auto decomp_table = cuda::device_buffer<uint32_t>(stream, mr, total_decomp_size, cuda::no_init);
   auto write_tokens_fn = detail::write_decomp_tokens_fn{
     *d_decomp_map, apply_compat, d_codepoints, decomp_offsets, decomp_table};
   thrust::for_each_n(policy, row_iter, num_rows, write_tokens_fn);
@@ -395,16 +399,16 @@ unicode_normalizer::unicode_normalizer(cudf::table_view const& unicode_data,
       std::move(decomp_offsets),
       std::move(decomp_table),
       std::move(ccc_table),
-      rmm::device_uvector<cudf::bitmask_type>(0, stream, mr),  // unused for NFD/NFKD
-      rmm::device_uvector<uint64_t>(0, stream, mr),
-      rmm::device_uvector<uint32_t>(0, stream, mr),
+      cuda::device_buffer<cudf::bitmask_type>(stream, mr, 0, cuda::no_init),  // unused for NFD/NFKD
+      cuda::device_buffer<uint64_t>(stream, mr, 0, cuda::no_init),
+      cuda::device_buffer<uint32_t>(stream, mr, 0, cuda::no_init),
       form);
     return;
   }
 
   // Build composition table (NFC/NFKC only)
-  auto d_comp_keys    = rmm::device_uvector<uint64_t>(num_rows, stream, temp_mr);
-  auto d_comp_values  = rmm::device_uvector<uint32_t>(num_rows, stream, temp_mr);
+  auto d_comp_keys    = cuda::device_buffer<uint64_t>(stream, temp_mr, num_rows, cuda::no_init);
+  auto d_comp_values  = cuda::device_buffer<uint32_t>(stream, temp_mr, num_rows, cuda::no_init);
   auto build_table_fn = detail::build_comp_table_fn{
     *d_decomp_map, d_codepoints, ccc_table, compat_decomp_flags, d_comp_keys, d_comp_values};
   thrust::for_each_n(policy, row_iter, num_rows, build_table_fn);
@@ -420,8 +424,8 @@ unicode_normalizer::unicode_normalizer(cudf::table_view const& unicode_data,
 
   // Copy into exact-size allocations so _impl retains ~12 KiB rather than the
   // ~400 KiB num_rows capacity left over from the compaction.
-  auto comp_keys   = cudf::detail::make_device_uvector_async(d_comp_keys, stream, mr);
-  auto comp_values = cudf::detail::make_device_uvector_async(d_comp_values, stream, mr);
+  auto comp_keys   = cuda::device_buffer<uint64_t>(stream, mr, d_comp_keys);
+  auto comp_values = cuda::device_buffer<uint32_t>(stream, mr, d_comp_values);
 
   thrust::sort_by_key(policy, comp_keys.begin(), comp_keys.end(), comp_values.begin());
 
@@ -798,7 +802,7 @@ std::unique_ptr<cudf::column> normalize_unicode(cudf::strings_column_view const&
   // Decomposition: write int64_t output-codepoint counts per input byte into out_positions,
   // then scan in-place to produce per-byte CP start offsets.  Using int64_t directly
   // avoids a separate int32_t expanded_sizes allocation (~4 × (B+1) bytes saved).
-  auto out_positions = rmm::device_uvector<int64_t>(chars_size + 1, stream, temp_mr);
+  auto out_positions = cuda::device_buffer<int64_t>(stream, temp_mr, chars_size + 1, cuda::no_init);
   {
     auto size_fn     = detail::decompose_size_fn{chars_span, p.decomp_offsets, p.decomp_table};
     int64_t const cs = chars_size;
@@ -817,17 +821,18 @@ std::unique_ptr<cudf::column> normalize_unicode(cudf::strings_column_view const&
   // read); write it back to out_positions[chars_size] for the per-string boundary lookup.
   auto const total_cps = cudf::detail::sizes_to_offsets(
     out_positions.begin(), out_positions.end(), out_positions.begin(), int64_t{0}, stream, temp_mr);
-  thrust::fill_n(policy, out_positions.begin() + chars_size, 1, total_cps);
+  thrust::fill_n(policy, out_positions.data() + chars_size, 1, total_cps);
 
   // Fill packed (cp|ccc) slots at pre-scanned positions
-  auto cps            = rmm::device_uvector<uint32_t>(total_cps, stream, temp_mr);
+  auto cps            = cuda::device_buffer<uint32_t>(stream, temp_mr, total_cps, cuda::no_init);
   auto decomp_fill_fn = detail::decompose_fill_fn{
     chars_span, p.decomp_offsets, p.decomp_table, p.ccc_table, out_positions, cps};
   thrust::for_each_n(policy, byte_iter, chars_size, decomp_fill_fn);
 
   // Build per-string codepoint offset boundaries: after the in-place scan,
   // out_positions[local] is the CP start offset for input byte local.
-  auto str_cp_offsets = rmm::device_uvector<int64_t>(input.size() + 1, stream, temp_mr);
+  auto str_cp_offsets =
+    cuda::device_buffer<int64_t>(stream, temp_mr, input.size() + 1, cuda::no_init);
   {
     auto const input_char_offsets =
       cudf::detail::offsetalator_factory::make_input_iterator(input.offsets(), input.offset());
@@ -841,7 +846,7 @@ std::unique_ptr<cudf::column> normalize_unicode(cudf::strings_column_view const&
       cuda::proclaim_return_type<int64_t>(
         [d_out_pos, first] __device__(int64_t offset) { return d_out_pos[offset - first]; }));
   }
-  out_positions.release();
+  out_positions = cuda::device_buffer<int64_t>(stream, temp_mr, 0, cuda::no_init);
 
   auto const row_iter = cuda::make_counting_iterator(cudf::size_type{0});
   auto const d_cps    = cps.data();
