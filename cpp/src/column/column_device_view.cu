@@ -79,10 +79,10 @@ create_device_view_from_view(ColumnView const& source,
   // from CPU to device.
   auto descendant_storage = std::make_unique<cuda::device_buffer<char>>(
     stream, mr, descendant_storage_bytes, cuda::no_init);
-  auto* descendant_storage_data = descendant_storage->data();
+  cudf::device_span<char> descendant_storage_data = descendant_storage;
 
-  auto tmp_result =
-    std::make_unique<ColumnDeviceView>(source, staging_buffer.data(), descendant_storage_data);
+  auto tmp_result = std::make_unique<ColumnDeviceView>(
+    source, staging_buffer.data(), descendant_storage_data.data());
 
   auto deleter = [descendant_storage = descendant_storage.release()](ColumnDeviceView* v) {
     v->destroy();
