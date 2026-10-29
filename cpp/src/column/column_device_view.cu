@@ -79,7 +79,7 @@ create_device_view_from_view(ColumnView const& source,
   // from CPU to device.
   auto descendant_storage = std::make_unique<cuda::device_buffer<char>>(
     stream, mr, descendant_storage_bytes, cuda::no_init);
-  cudf::device_span<char> descendant_storage_data = descendant_storage;
+  cudf::device_span<char> descendant_storage_data = *descendant_storage;
 
   auto tmp_result = std::make_unique<ColumnDeviceView>(
     source, staging_buffer.data(), descendant_storage_data.data());
