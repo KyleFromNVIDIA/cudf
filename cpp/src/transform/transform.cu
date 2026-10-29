@@ -127,7 +127,7 @@ std::tuple<rtcx::blob, lto_binary_type, std::string> instantiate_fragment(
 auto to_args(std::span<input_column_view const> inputs,
              std::span<output_column> outputs,
              cuda::stream_ref stream,
-             rmm::device_async_resource_ref mr)
+             cudf::memory_resources mr)
 {
   std::vector<handle> handles;
   auto h_args =
@@ -136,12 +136,12 @@ auto to_args(std::span<input_column_view const> inputs,
 
   for (auto& in : inputs) {
     if (auto* col = std::get_if<column_view>(&in)) {
-      auto handle = column_device_view::create(*col, stream);
+      auto handle = column_device_view::create(*col, stream, mr.get_output_mr());
       h_args.push_back(*handle);
       handles.emplace_back(std::move(handle));
     } else {
       auto& scalar = std::get<scalar_column_view>(in);
-      auto handle  = column_device_view::create(scalar.as_column_view(), stream);
+      auto handle = column_device_view::create(scalar.as_column_view(), stream, mr.get_output_mr());
       h_args.push_back(*handle);
       handles.emplace_back(std::move(handle));
     }
@@ -211,10 +211,10 @@ void run(bool is_null_aware,
          std::string const& udf,
          udf_source_type source_type,
          cuda::stream_ref stream,
-         rmm::device_async_resource_ref mr)
+         cudf::memory_resources mr)
 {
   auto kernel = get_kernel(is_null_aware, has_user_data, inputs, outputs, udf, source_type);
-  auto [cols, handles] = to_args(inputs, outputs, stream, mr);
+  auto [cols, handles] = to_args(inputs, outputs, stream, mr.as_temporary());
   auto* input_cols     = reinterpret_cast<column_device_view_core const*>(cols.data());
   auto* output_cols =
     reinterpret_cast<mutable_column_device_view_core const*>(input_cols + inputs.size());
@@ -230,9 +230,9 @@ void run(kernel const& kernel,
          std::span<output_column> outputs,
          int32_t* d_max_error,
          cuda::stream_ref stream,
-         rmm::device_async_resource_ref mr)
+         cudf::memory_resources mr)
 {
-  auto [cols, handles] = to_args(inputs, outputs, stream, mr);
+  auto [cols, handles] = to_args(inputs, outputs, stream, mr.as_temporary());
   auto* input_cols     = reinterpret_cast<column_device_view_core const*>(cols.data());
   auto* output_cols =
     reinterpret_cast<mutable_column_device_view_core const*>(input_cols + inputs.size());
@@ -265,7 +265,7 @@ void run_lto(std::optional<std::tuple<std::span<uint8_t const>, lto_binary_type,
              std::span<uint8_t const> udf_binary,
              lto_binary_type source_type,
              cuda::stream_ref stream,
-             rmm::device_async_resource_ref mr)
+             cudf::memory_resources mr)
 {
   auto [in_types, out_types, ptx_in_types, ptx_out_types] =
     jit::reflect(source_type, inputs, outputs);
@@ -298,7 +298,7 @@ void run_lto(std::optional<std::tuple<std::span<uint8_t const>, lto_binary_type,
 
   auto kernel = get_lto_linked_kernel("cudf/cpp/src/transform/jit/kernel.cu", {}, memory_fragments);
 
-  auto [cols, handles] = to_args(inputs, outputs, stream, mr);
+  auto [cols, handles] = to_args(inputs, outputs, stream, mr.as_temporary());
   auto* input_cols     = reinterpret_cast<column_device_view_core const*>(cols.data());
   auto* output_cols =
     reinterpret_cast<mutable_column_device_view_core const*>(input_cols + inputs.size());
