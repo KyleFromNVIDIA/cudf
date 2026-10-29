@@ -104,7 +104,6 @@ auto create_strings_device_views(host_span<column_view const> views, cuda::strea
                                d_partition_offsets.data() + d_partition_offsets.size() - 1,
                                sizeof(output_chars_size),
                                stream));
-  cudf::detail::sync_stream(stream);
   stream.sync();  // ensure copy of output_chars_size is complete before returning
 
   return std::make_tuple(std::move(device_view_owners),
