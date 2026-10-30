@@ -16,7 +16,6 @@
 #include <cudf/detail/offsets_iterator_factory.cuh>
 #include <cudf/detail/sizes_to_offsets_iterator.cuh>
 #include <cudf/detail/utilities/cuda.cuh>
-#include <cudf/detail/utilities/cuda_memcpy.hpp>
 #include <cudf/detail/utilities/grid_1d.cuh>
 #include <cudf/detail/utilities/integer_utils.hpp>
 #include <cudf/strings/detail/strings_children.cuh>
@@ -42,6 +41,7 @@
 #include <cuda/std/limits>
 #include <cuda/stream>
 #include <thrust/execution_policy.h>
+#include <thrust/fill.h>
 #include <thrust/find.h>
 #include <thrust/for_each.h>
 
@@ -724,9 +724,10 @@ void encode_segments(char const* d_input_chars,
                         cuda::std::identity{},
                         stream,
                         mr.as_temporary());
-  auto const end_offset = static_cast<IndexType>(chars_size);
-  cudf::detail::cuda_memcpy_async<IndexType>(
-    cudf::device_span<IndexType>{d_segments.data() + num_segments, 1}, {&end_offset, 1}, stream);
+  thrust::fill_n(rmm::exec_policy_nosync(stream, temp_mr),
+                 d_segments.begin() + num_segments,
+                 1,
+                 static_cast<IndexType>(chars_size));
 
   // de-duplicate the segments so only distinct segments are encoded;
   // the slot table size is bounded so collisions are encoded as well
