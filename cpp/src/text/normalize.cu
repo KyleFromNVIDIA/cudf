@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "strings/utilities.hpp"
 #include "text/detail/codepoint_metadata.ah"
 #include "text/normalize.cuh"
 #include "text/utilities/tokenize_ops.cuh"
@@ -215,7 +216,7 @@ struct character_normalizer::character_normalizer_impl {
   cuda::device_buffer<aux_codepoint_data_type> aux_table;
   bool do_lower_case;
   std::unique_ptr<cudf::column> special_tokens;
-  rmm::device_uvector<cudf::string_view> special_tokens_view;
+  cuda::device_buffer<cudf::string_view> special_tokens_view;
 
   cudf::device_span<cudf::string_view const> get_special_tokens() const
   {
@@ -226,7 +227,7 @@ struct character_normalizer::character_normalizer_impl {
                             cuda::device_buffer<aux_codepoint_data_type>&& aux_table,
                             bool do_lower_case,
                             std::unique_ptr<cudf::column>&& special_tokens,
-                            rmm::device_uvector<cudf::string_view>&& special_tokens_view)
+                            cuda::device_buffer<cudf::string_view>&& special_tokens_view)
     : cp_metadata(std::move(cp_metadata)),
       aux_table(std::move(aux_table)),
       do_lower_case{do_lower_case},
@@ -260,8 +261,10 @@ character_normalizer::character_normalizer(bool do_lower_case,
     sorted = cudf::strings::to_lower(cudf::strings_column_view(sorted->view()), stream, output_mr);
   }
 
-  auto tokens_view = cudf::strings::detail::create_string_vector_from_column(
-    cudf::strings_column_view(sorted->view()), stream, output_mr);
+  auto tokens_view =
+    cuda::device_buffer<cudf::string_view>(stream, output_mr, sorted->size(), cuda::no_init);
+  cudf::strings::detail::populate_string_views(
+    cudf::strings_column_view(sorted->view()), tokens_view, stream);
 
   _impl = std::make_unique<character_normalizer_impl>(std::move(cp_metadata),
                                                       std::move(aux_table),

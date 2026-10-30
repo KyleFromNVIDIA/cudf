@@ -5,6 +5,7 @@
 
 #include "strings/char_types/char_cases.h"
 #include "strings/char_types/char_flags.h"
+#include "strings/utilities.hpp"
 
 #include <cudf/column/column_device_view.cuh>
 #include <cudf/column/column_factories.hpp>
@@ -30,20 +31,16 @@
 namespace cudf::strings {
 namespace detail {
 
-/**
- * @copydoc create_string_vector_from_column
- */
-rmm::device_uvector<string_view> create_string_vector_from_column(
-  cudf::strings_column_view const input, cuda::stream_ref stream, rmm::device_async_resource_ref mr)
+void populate_string_views(strings_column_view input,
+                           device_span<string_view> output,
+                           cuda::stream_ref stream)
 {
   auto d_strings = column_device_view::create(input.parent(), stream);
-
-  auto strings_vector = rmm::device_uvector<string_view>(input.size(), stream, mr);
 
   thrust::transform(rmm::exec_policy_nosync(stream, cudf::get_current_device_resource_ref()),
                     cuda::counting_iterator<size_type>{0},
                     cuda::counting_iterator<size_type>{input.size()},
-                    strings_vector.begin(),
+                    output.begin(),
                     [d_strings = *d_strings] __device__(size_type idx) {
                       // placeholder for factory function that takes a span of string_views
                       auto const null_string_view = string_view{nullptr, 0};
@@ -54,7 +51,16 @@ rmm::device_uvector<string_view> create_string_vector_from_column(
                       auto const empty_string_view = string_view{};
                       return d_str.empty() ? empty_string_view : d_str;
                     });
+}
 
+/**
+ * @copydoc create_string_vector_from_column
+ */
+rmm::device_uvector<string_view> create_string_vector_from_column(
+  cudf::strings_column_view const input, cuda::stream_ref stream, rmm::device_async_resource_ref mr)
+{
+  auto strings_vector = rmm::device_uvector<string_view>(input.size(), stream, mr);
+  populate_string_views(input, strings_vector, stream);
   return strings_vector;
 }
 

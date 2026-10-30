@@ -47,6 +47,7 @@
 #include <thrust/unique.h>
 
 #include <memory>
+#include <type_traits>
 #include <utility>
 
 namespace cudf {
@@ -338,9 +339,13 @@ class merge {
   std::unique_ptr<detail::row::lexicographic::two_table_comparator> tt_comparator;
 
  public:
+  template <compute_match_starts ComputeStarts>
   struct match_ranges {
+    using counts_storage = std::conditional_t<ComputeStarts == compute_match_starts::YES,
+                                              cuda::device_buffer<size_type>,
+                                              rmm::device_uvector<size_type>>;
     std::unique_ptr<cuda::device_buffer<size_type>> starts;
-    std::unique_ptr<rmm::device_uvector<size_type>> counts;
+    std::unique_ptr<counts_storage> counts;
   };
 
   merge(table_view const& smaller,
@@ -364,9 +369,9 @@ class merge {
   std::unique_ptr<rmm::device_uvector<size_type>> matches_per_row(
     cuda::stream_ref stream, rmm::device_async_resource_ref mr);
 
-  match_ranges find_match_ranges(compute_match_starts compute_starts,
-                                 cuda::stream_ref stream,
-                                 rmm::device_async_resource_ref mr);
+  template <compute_match_starts ComputeStarts>
+  match_ranges<ComputeStarts> find_match_ranges(cuda::stream_ref stream,
+                                                rmm::device_async_resource_ref mr);
 
   std::pair<std::unique_ptr<rmm::device_uvector<size_type>>,
             std::unique_ptr<rmm::device_uvector<size_type>>>
@@ -378,19 +383,28 @@ class merge {
 };
 
 template <typename SmallerIterator>
-typename merge<SmallerIterator>::match_ranges merge<SmallerIterator>::find_match_ranges(
-  compute_match_starts compute_starts, cuda::stream_ref stream, rmm::device_async_resource_ref mr)
+template <compute_match_starts ComputeStarts>
+typename merge<SmallerIterator>::template match_ranges<ComputeStarts>
+merge<SmallerIterator>::find_match_ranges(cuda::stream_ref stream,
+                                          rmm::device_async_resource_ref mr)
 {
   auto const has_nulls        = has_nested_nulls(smaller) or has_nested_nulls(larger);
   auto const larger_numrows   = larger.num_rows();
   auto const num_smaller_runs = static_cast<size_type>(unique_smaller_rows.size());
   auto match_starts =
-    compute_starts == compute_match_starts::YES
+    ComputeStarts == compute_match_starts::YES
       ? std::make_unique<cuda::device_buffer<size_type>>(stream, mr, larger_numrows, cuda::no_init)
       : nullptr;
   auto const match_starts_data = match_starts == nullptr ? nullptr : match_starts->data();
-  auto match_counts            = cudf::detail::make_zeroed_device_uvector_async<size_type>(
-    static_cast<std::size_t>(larger_numrows) + 1, stream, mr);
+  auto match_counts            = [&] {
+    auto const size = static_cast<std::size_t>(larger_numrows) + 1;
+    if constexpr (ComputeStarts == compute_match_starts::YES) {
+      return cudf::detail::make_zeroed_device_buffer_async<size_type>(size, stream, mr);
+    } else {
+      // Match contexts expose the counts as an RMM vector in the public API.
+      return cudf::detail::make_zeroed_device_uvector_async<size_type>(size, stream, mr);
+    }
+  }();
 
   auto const unique_smaller_it = cuda::transform_iterator(
     unique_smaller_rows.data(),
@@ -423,15 +437,15 @@ typename merge<SmallerIterator>::match_ranges merge<SmallerIterator>::find_match
     find_ranges(tt_comparator->less<false>(nullate::DYNAMIC{has_nulls}));
   }
 
-  return {std::move(match_starts),
-          std::make_unique<rmm::device_uvector<size_type>>(std::move(match_counts))};
+  return match_ranges<ComputeStarts>{
+    std::move(match_starts), std::make_unique<decltype(match_counts)>(std::move(match_counts))};
 }
 
 template <typename SmallerIterator>
 std::unique_ptr<rmm::device_uvector<size_type>> merge<SmallerIterator>::matches_per_row(
   cuda::stream_ref stream, rmm::device_async_resource_ref mr)
 {
-  return find_match_ranges(compute_match_starts::NO, stream, mr).counts;
+  return find_match_ranges<compute_match_starts::NO>(stream, mr).counts;
 }
 
 template <typename SmallerIterator>
@@ -442,7 +456,7 @@ merge<SmallerIterator>::inner(cuda::stream_ref stream, rmm::device_async_resourc
   auto temp_mr              = cudf::get_current_device_resource_ref();
   auto const larger_numrows = larger.num_rows();
 
-  auto [match_starts, match_counts] = find_match_ranges(compute_match_starts::YES, stream, temp_mr);
+  auto [match_starts, match_counts] = find_match_ranges<compute_match_starts::YES>(stream, temp_mr);
 
   // Use 64-bit prefix sums to handle large output sizes (> INT32_MAX rows)
   // The prefix sums can exceed INT32_MAX even though individual match counts are small
@@ -495,7 +509,7 @@ merge<SmallerIterator>::left(cuda::stream_ref stream, rmm::device_async_resource
   auto temp_mr              = cudf::get_current_device_resource_ref();
   auto const larger_numrows = larger.num_rows();
 
-  auto [match_starts, match_counts] = find_match_ranges(compute_match_starts::YES, stream, temp_mr);
+  auto [match_starts, match_counts] = find_match_ranges<compute_match_starts::YES>(stream, temp_mr);
 
   cudf::detail::device_scalar<int64_t> total_matches(stream, temp_mr);
   auto match_offsets =

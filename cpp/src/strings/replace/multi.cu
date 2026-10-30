@@ -4,6 +4,7 @@
  */
 
 #include "strings/positions.hpp"
+#include "strings/utilities.hpp"
 
 #include <cudf/column/column_device_view.cuh>
 #include <cudf/column/column_factories.hpp>
@@ -313,10 +314,12 @@ std::unique_ptr<column> replace_character_parallel(strings_column_view const& in
     get_offset_value(input.offsets(), input.offset() + strings_count, stream) -
     get_offset_value(input.offsets(), input.offset(), stream);
 
-  auto d_targets =
-    create_string_vector_from_column(targets, stream, cudf::get_current_device_resource_ref());
-  auto d_replacements =
-    create_string_vector_from_column(repls, stream, cudf::get_current_device_resource_ref());
+  cuda::device_buffer<string_view> d_targets(
+    stream, cudf::get_current_device_resource_ref(), targets.size(), cuda::no_init);
+  populate_string_views(targets, d_targets, stream);
+  cuda::device_buffer<string_view> d_replacements(
+    stream, cudf::get_current_device_resource_ref(), repls.size(), cuda::no_init);
+  populate_string_views(repls, d_replacements, stream);
 
   replace_multi_parallel_fn fn{
     *d_strings,
