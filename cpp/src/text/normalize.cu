@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "strings/utilities.hpp"
 #include "text/detail/codepoint_metadata.ah"
 #include "text/normalize.cuh"
 #include "text/utilities/tokenize_ops.cuh"
@@ -24,6 +23,7 @@
 #include <cudf/strings/detail/strings_children.cuh>
 #include <cudf/strings/detail/strings_column_factories.cuh>
 #include <cudf/strings/detail/utilities.cuh>
+#include <cudf/strings/detail/utilities.hpp>
 #include <cudf/strings/string_view.cuh>
 #include <cudf/strings/strings_column_view.hpp>
 #include <cudf/utilities/default_stream.hpp>
@@ -261,10 +261,8 @@ character_normalizer::character_normalizer(bool do_lower_case,
     sorted = cudf::strings::to_lower(cudf::strings_column_view(sorted->view()), stream, output_mr);
   }
 
-  auto tokens_view =
-    cuda::device_buffer<cudf::string_view>(stream, output_mr, sorted->size(), cuda::no_init);
-  cudf::strings::detail::populate_string_views(
-    cudf::strings_column_view(sorted->view()), tokens_view, stream);
+  auto tokens_view = cudf::strings::detail::create_string_vector_from_column(
+    cudf::strings_column_view(sorted->view()), stream, output_mr);
 
   _impl = std::make_unique<character_normalizer_impl>(std::move(cp_metadata),
                                                       std::move(aux_table),

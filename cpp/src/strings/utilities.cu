@@ -5,7 +5,6 @@
 
 #include "strings/char_types/char_cases.h"
 #include "strings/char_types/char_flags.h"
-#include "strings/utilities.hpp"
 
 #include <cudf/column/column_device_view.cuh>
 #include <cudf/column/column_factories.hpp>
@@ -30,6 +29,7 @@
 
 namespace cudf::strings {
 namespace detail {
+namespace {
 
 void populate_string_views(strings_column_view input,
                            device_span<string_view> output,
@@ -53,13 +53,15 @@ void populate_string_views(strings_column_view input,
                     });
 }
 
+}  // namespace
+
 /**
  * @copydoc create_string_vector_from_column
  */
-rmm::device_uvector<string_view> create_string_vector_from_column(
+cuda::device_buffer<string_view> create_string_vector_from_column(
   cudf::strings_column_view const input, cuda::stream_ref stream, rmm::device_async_resource_ref mr)
 {
-  auto strings_vector = rmm::device_uvector<string_view>(input.size(), stream, mr);
+  auto strings_vector = cuda::device_buffer<string_view>(stream, mr, input.size(), cuda::no_init);
   populate_string_views(input, strings_vector, stream);
   return strings_vector;
 }
@@ -203,7 +205,9 @@ rmm::device_uvector<string_view> create_string_vector_from_column(
   rmm::device_async_resource_ref mr)
 {
   CUDF_FUNC_RANGE();
-  return detail::create_string_vector_from_column(strings, stream, mr);
+  auto strings_vector = rmm::device_uvector<string_view>(strings.size(), stream, mr);
+  detail::populate_string_views(strings, strings_vector, stream);
+  return strings_vector;
 }
 
 int64_t get_offset64_threshold() { return detail::get_offset64_threshold(); }
