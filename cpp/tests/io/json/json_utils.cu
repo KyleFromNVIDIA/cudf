@@ -16,6 +16,7 @@
 
 #include <rmm/exec_policy.hpp>
 
+#include <cuda/buffer>
 #include <cuda/std/iterator>
 #include <thrust/adjacent_difference.h>
 
