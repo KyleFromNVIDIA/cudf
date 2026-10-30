@@ -485,6 +485,8 @@ void roundtrip_test(cudf::io::compression_type compression,
       mr,
       cudf::io::detail::max_compressed_size(compression, test_input.size()),
       cuda::no_init);
+    // Tracks the valid compressed bytes since device_buffer cannot be shrunk yet
+    // TODO: Remove this when https://github.com/NVIDIA/cccl/issues/12051 is resolved
     device_span<uint8_t const> compressed = d_comp;
     {
       auto const d_orig = cudf::detail::make_device_buffer_async(test_input, stream, mr);
