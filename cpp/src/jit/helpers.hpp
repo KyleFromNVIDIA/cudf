@@ -44,16 +44,6 @@ std::map<uint32_t, std::string> build_ptx_params(std::span<std::string const> ou
                                                  std::span<std::string const> input_typenames,
                                                  bool has_user_data);
 
-template <typename T>
-cuda::device_buffer<T> to_device_vector(std::vector<T> const& host,
-                                        cuda::stream_ref stream,
-                                        rmm::device_async_resource_ref mr)
-{
-  cuda::device_buffer<T> device{stream, mr, host.size(), cuda::no_init};
-  cudf::detail::cuda_memcpy_async<T>(device, host, stream);
-  return device;
-}
-
 template <typename DeviceView, typename ColumnView>
 std::tuple<std::vector<std::unique_ptr<DeviceView, std::function<void(DeviceView*)>>>,
            cuda::device_buffer<DeviceView>>
